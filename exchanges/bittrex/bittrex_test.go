@@ -2,7 +2,6 @@ package bittrex
 
 import (
 	"testing"
-	"time"
 
 	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
@@ -33,16 +32,14 @@ func TestSetup(t *testing.T) {
 	if err != nil {
 		t.Error("Test Failed - Bittrex Setup() init error")
 	}
-	bConfig.APIKey = apiKey
-	bConfig.APISecret = apiSecret
-	bConfig.AuthenticatedAPISupport = true
+	bConfig.API.Credentials.Key = apiKey
+	bConfig.API.Credentials.Secret = apiSecret
+	bConfig.API.AuthenticatedSupport = true
 
 	b.Setup(bConfig)
 
-	if !b.IsEnabled() ||
-		b.RESTPollingDelay != time.Duration(10) || b.Verbose ||
-		len(b.BaseCurrencies) < 1 || len(b.AvailablePairs) < 1 ||
-		len(b.EnabledPairs) < 1 {
+	if !b.IsEnabled() || !b.API.AuthenticatedSupport ||
+		b.Verbose || len(b.BaseCurrencies) < 1 || len(b.AvailablePairs) < 1 || len(b.EnabledPairs) < 1 {
 		t.Error("Test Failed - Bittrex Setup values not set correctly")
 	}
 }
@@ -339,8 +336,8 @@ func TestSubmitOrder(t *testing.T) {
 	b.SetDefaults()
 	TestSetup(t)
 
-	if b.APIKey == "" || b.APISecret == "" ||
-		b.APIKey == "Key" || b.APISecret == "Secret" ||
+	if b.API.Credentials.Key == "" || b.API.Credentials.Secret == "" ||
+		b.API.Credentials.Key == "Key" || b.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
 		t.Skip()
 	}

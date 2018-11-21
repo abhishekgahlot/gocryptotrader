@@ -32,9 +32,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - bitflyer Setup() init error")
 	}
 
-	bitflyerConfig.AuthenticatedAPISupport = true
-	bitflyerConfig.APIKey = testAPIKey
-	bitflyerConfig.APISecret = testAPISecret
+	bitflyerConfig.API.AuthenticatedSupport = true
+	bitflyerConfig.API.Credentials.Key = testAPIKey
+	bitflyerConfig.API.Credentials.Secret = testAPISecret
 
 	b.Setup(bitflyerConfig)
 }
@@ -135,7 +135,7 @@ func TestFetchTicker(t *testing.T) {
 	t.Parallel()
 	var p pair.CurrencyPair
 
-	currencies := b.GetAvailableCurrencies()
+	currencies := b.GetAvailablePairs()
 	for _, pair := range currencies {
 		if pair.Pair().String() == "FXBTC_JPY" {
 			p = pair
@@ -254,16 +254,18 @@ func TestSubmitOrder(t *testing.T) {
 	b.SetDefaults()
 	TestSetup(t)
 
-	if b.APIKey == "" || b.APISecret == "" ||
-		b.APIKey == "Key" || b.APISecret == "Secret" ||
+	if b.API.Credentials.Key == "" || b.API.Credentials.Secret == "" ||
+		b.API.Credentials.Key == "Key" || b.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
 		t.Skip()
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.LTC,
 	}
+
 	response, err := b.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 1, "clientId")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

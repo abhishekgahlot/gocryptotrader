@@ -1,7 +1,6 @@
 package exchange
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -24,12 +23,6 @@ const (
 	// DefaultHTTPTimeout is the default HTTP/HTTPS Timeout for exchange requests
 	DefaultHTTPTimeout = time.Second * 15
 )
-
-// SupportsRESTTickerBatchUpdates returns whether or not the
-// exhange supports REST batch ticker fetching
-func (e *Base) SupportsRESTTickerBatchUpdates() bool {
-	return e.SupportsRESTTickerBatching
-}
 
 // SetHTTPClientTimeout sets the timeout value for the exchanges
 // HTTP Client
@@ -107,9 +100,75 @@ func (e *Base) SetClientProxyAddress(addr string) error {
 	return nil
 }
 
-// SetAutoPairDefaults sets the default values for whether or not the exchange
-// supports auto pair updating or not
-func (e *Base) SetAutoPairDefaults() error {
+// SetFeatureDefaults sets the exchanges default feature
+// support set
+func (e *Base) SetFeatureDefaults() error {
+	cfg := config.GetConfig()
+	exch, err := cfg.GetExchangeConfig(e.Name)
+	if err != nil {
+		return err
+	}
+	var update bool
+
+	if exch.Features == nil {
+		update = true
+
+		s := &config.FeaturesConfig{
+			Supports: config.FeaturesSupportedConfig{
+				Websocket:          e.Features.Supports.Websocket,
+				REST:               e.Features.Supports.REST,
+				RESTTickerBatching: e.Features.Supports.RESTTickerBatching,
+			},
+		}
+
+		if exch.SupportsAutoPairUpdates != nil {
+			s.Supports.AutoPairUpdates = *exch.SupportsAutoPairUpdates
+			s.Enabled.AutoPairUpdates = *exch.SupportsAutoPairUpdates
+		} else {
+			s.Supports.AutoPairUpdates = e.Features.Supports.AutoPairUpdates
+			s.Enabled.AutoPairUpdates = e.Features.Supports.AutoPairUpdates
+			if !s.Supports.AutoPairUpdates {
+				exch.PairsLastUpdated = time.Now().Unix()
+				e.PairsLastUpdated = exch.PairsLastUpdated
+			}
+		}
+		exch.Features = s
+		exch.SupportsAutoPairUpdates = nil
+	} else {
+		if e.Features.Supports.AutoPairUpdates != exch.Features.Supports.AutoPairUpdates {
+			exch.Features.Supports.AutoPairUpdates = e.Features.Supports.AutoPairUpdates
+
+			if !exch.Features.Supports.AutoPairUpdates {
+				exch.PairsLastUpdated = time.Now().Unix()
+			}
+			update = true
+		}
+
+		if e.Features.Supports.REST != exch.Features.Supports.REST {
+			exch.Features.Supports.REST = e.Features.Supports.REST
+			update = true
+		}
+
+		if e.Features.Supports.RESTTickerBatching != exch.Features.Supports.RESTTickerBatching {
+			exch.Features.Supports.RESTTickerBatching = e.Features.Supports.RESTTickerBatching
+			update = true
+		}
+
+		if e.Features.Supports.Websocket != exch.Features.Supports.Websocket {
+			exch.Features.Supports.Websocket = e.Features.Supports.Websocket
+			update = true
+		}
+
+		e.Features.Enabled.AutoPairUpdates = exch.Features.Enabled.AutoPairUpdates
+	}
+	if update {
+		return cfg.UpdateExchangeConfig(exch)
+	}
+	return nil
+}
+
+// SetAPICredentialDefaults sets the API Credential validator defaults
+func (e *Base) SetAPICredentialDefaults() error {
 	cfg := config.GetConfig()
 	exch, err := cfg.GetExchangeConfig(e.Name)
 	if err != nil {
@@ -117,18 +176,21 @@ func (e *Base) SetAutoPairDefaults() error {
 	}
 
 	update := false
-	if e.SupportsAutoPairUpdating {
-		if !exch.SupportsAutoPairUpdates {
-			exch.SupportsAutoPairUpdates = true
-			exch.PairsLastUpdated = 0
-			update = true
-		}
-	} else {
-		if exch.PairsLastUpdated == 0 {
-			exch.PairsLastUpdated = time.Now().Unix()
-			e.PairsLastUpdated = exch.PairsLastUpdated
-			update = true
-		}
+
+	// Exchange hardcoded settings take precedence and overwrite the config settings
+	if exch.API.CredentialsValidator.RequiresBase64DecodeSecret != e.API.CredentialsValidator.RequiresBase64DecodeSecret {
+		exch.API.CredentialsValidator.RequiresBase64DecodeSecret = e.API.CredentialsValidator.RequiresBase64DecodeSecret
+		update = true
+	}
+
+	if exch.API.CredentialsValidator.RequiresClientID != e.API.CredentialsValidator.RequiresClientID {
+		exch.API.CredentialsValidator.RequiresClientID = e.API.CredentialsValidator.RequiresClientID
+		update = true
+	}
+
+	if exch.API.CredentialsValidator.RequiresPEM != e.API.CredentialsValidator.RequiresPEM {
+		exch.API.CredentialsValidator.RequiresPEM = e.API.CredentialsValidator.RequiresPEM
+		update = true
 	}
 
 	if update {
@@ -137,10 +199,16 @@ func (e *Base) SetAutoPairDefaults() error {
 	return nil
 }
 
+// SupportsRESTTickerBatchUpdates returns whether or not the
+// exhange supports REST batch ticker fetching
+func (e *Base) SupportsRESTTickerBatchUpdates() bool {
+	return e.Features.Supports.RESTTickerBatching
+}
+
 // SupportsAutoPairUpdates returns whether or not the exchange supports
 // auto currency pair updating
 func (e *Base) SupportsAutoPairUpdates() bool {
-	return e.SupportsAutoPairUpdating
+	return e.Features.Supports.AutoPairUpdates
 }
 
 // GetLastPairsUpdateTime returns the unix timestamp of when the exchanges
@@ -272,7 +340,7 @@ func (e *Base) SetCurrencyPairFormat() error {
 // GetAuthenticatedAPISupport returns whether the exchange supports
 // authenticated API requests
 func (e *Base) GetAuthenticatedAPISupport() bool {
-	return e.AuthenticatedAPISupport
+	return e.API.AuthenticatedSupport
 }
 
 // GetName is a method that returns the name of the exchange base
@@ -280,17 +348,27 @@ func (e *Base) GetName() string {
 	return e.Name
 }
 
-// GetEnabledCurrencies is a method that returns the enabled currency pairs of
+// GetEnabledFeatures returns the exchanges enabled features
+func (e *Base) GetEnabledFeatures() FeaturesEnabled {
+	return e.Features.Enabled
+}
+
+// GetSupportedFeatures returns the exchanges supported features
+func (e *Base) GetSupportedFeatures() FeaturesSupported {
+	return e.Features.Supports
+}
+
+// GetEnabledPairs is a method that returns the enabled currency pairs of
 // the exchange base
-func (e *Base) GetEnabledCurrencies() []pair.CurrencyPair {
+func (e *Base) GetEnabledPairs() []pair.CurrencyPair {
 	return pair.FormatPairs(e.EnabledPairs,
 		e.ConfigCurrencyPairFormat.Delimiter,
 		e.ConfigCurrencyPairFormat.Index)
 }
 
-// GetAvailableCurrencies is a method that returns the available currency pairs
+// GetAvailablePairs is a method that returns the available currency pairs
 // of the exchange base
-func (e *Base) GetAvailableCurrencies() []pair.CurrencyPair {
+func (e *Base) GetAvailablePairs() []pair.CurrencyPair {
 	return pair.FormatPairs(e.AvailablePairs,
 		e.ConfigCurrencyPairFormat.Delimiter,
 		e.ConfigCurrencyPairFormat.Index)
@@ -300,9 +378,9 @@ func (e *Base) GetAvailableCurrencies() []pair.CurrencyPair {
 // exchange available currencies or not
 func (e *Base) SupportsCurrency(p pair.CurrencyPair, enabledPairs bool) bool {
 	if enabledPairs {
-		return pair.Contains(e.GetEnabledCurrencies(), p, false)
+		return pair.Contains(e.GetEnabledPairs(), p, false)
 	}
-	return pair.Contains(e.GetAvailableCurrencies(), p, false)
+	return pair.Contains(e.GetAvailablePairs(), p, false)
 }
 
 // GetExchangeFormatCurrencySeperator returns whether or not a specific
@@ -370,30 +448,74 @@ func (e *Base) IsEnabled() bool {
 
 // SetAPIKeys is a method that sets the current API keys for the exchange
 func (e *Base) SetAPIKeys(APIKey, APISecret, ClientID string, b64Decode bool) {
-	if !e.AuthenticatedAPISupport {
+	if !e.API.AuthenticatedSupport {
 		return
 	}
 
-	e.APIKey = APIKey
-	e.ClientID = ClientID
+	e.API.Credentials.Key = APIKey
+	e.API.Credentials.ClientID = ClientID
 
 	if b64Decode {
 		result, err := common.Base64Decode(APISecret)
 		if err != nil {
-			e.AuthenticatedAPISupport = false
+			e.API.AuthenticatedSupport = false
 			log.Printf(warningBase64DecryptSecretKeyFailed, e.Name)
 		}
-		e.APISecret = string(result)
+		e.API.Credentials.Secret = string(result)
 	} else {
-		e.APISecret = APISecret
+		e.API.Credentials.Secret = APISecret
 	}
 }
 
-// SetCurrencies sets the exchange currency pairs for either enabledPairs or
+// SetupDefaults sets the exchange settings based on the supplied config
+func (e *Base) SetupDefaults(exch config.ExchangeConfig) error {
+	e.Enabled = true
+	e.API.AuthenticatedSupport = exch.API.AuthenticatedSupport
+	e.SetAPIKeys(exch.API.Credentials.Key, exch.API.Credentials.Secret, e.API.Credentials.ClientID, e.API.CredentialsValidator.RequiresBase64DecodeSecret)
+	e.SetHTTPClientTimeout(exch.HTTPTimeout)
+	e.SetHTTPClientUserAgent(exch.HTTPUserAgent)
+	e.Verbose = exch.Verbose
+	e.BaseCurrencies = common.SplitStrings(exch.BaseCurrencies, ",")
+	e.AvailablePairs = common.SplitStrings(exch.AvailablePairs, ",")
+	e.EnabledPairs = common.SplitStrings(exch.EnabledPairs, ",")
+
+	err := e.SetCurrencyPairFormat()
+	if err != nil {
+		return err
+	}
+	err = e.SetAssetTypes()
+	if err != nil {
+		return err
+	}
+	err = e.SetFeatureDefaults()
+	if err != nil {
+		return err
+	}
+	err = e.SetAPIURL(exch)
+	if err != nil {
+		return err
+	}
+	err = e.SetClientProxyAddress(exch.ProxyAddress)
+	if err != nil {
+		return err
+	}
+	err = e.SetAPICredentialDefaults()
+	if err != nil {
+		return err
+	}
+
+	if e.Features.Supports.Websocket {
+		e.Websocket.SetEnabled(exch.Features.Enabled.Websocket)
+	}
+
+	return nil
+}
+
+// SetPairs sets the exchange currency pairs for either enabledPairs or
 // availablePairs
-func (e *Base) SetCurrencies(pairs []pair.CurrencyPair, enabledPairs bool) error {
+func (e *Base) SetPairs(pairs []pair.CurrencyPair, enabledPairs bool) error {
 	if len(pairs) == 0 {
-		return fmt.Errorf("%s SetCurrencies error - pairs is empty", e.Name)
+		return fmt.Errorf("%s SetPairs error - pairs is empty", e.Name)
 	}
 
 	cfg := config.GetConfig()
@@ -419,11 +541,11 @@ func (e *Base) SetCurrencies(pairs []pair.CurrencyPair, enabledPairs bool) error
 	return cfg.UpdateExchangeConfig(exchCfg)
 }
 
-// UpdateCurrencies updates the exchange currency pairs for either enabledPairs or
+// UpdatePairs updates the exchange currency pairs for either enabledPairs or
 // availablePairs
-func (e *Base) UpdateCurrencies(exchangeProducts []string, enabled, force bool) error {
+func (e *Base) UpdatePairs(exchangeProducts []string, enabled, force bool) error {
 	if len(exchangeProducts) == 0 {
-		return fmt.Errorf("%s UpdateCurrencies error - exchangeProducts is empty", e.Name)
+		return fmt.Errorf("%s UpdatePairs error - exchangeProducts is empty", e.Name)
 	}
 
 	exchangeProducts = common.SplitStrings(common.StringToUpper(common.JoinStrings(exchangeProducts, ",")), ",")
@@ -525,48 +647,48 @@ func (o OrderSide) ToString() string {
 
 // SetAPIURL sets configuration API URL for an exchange
 func (e *Base) SetAPIURL(ec config.ExchangeConfig) error {
-	if ec.APIURL == "" || ec.APIURLSecondary == "" {
-		return errors.New("SetAPIURL error variable zero value")
+	if ec.API.Endpoints.URL == "" || ec.API.Endpoints.URLSecondary == "" {
+		return fmt.Errorf("exchange %s: SetAPIURL error. URL vals are empty", e.Name)
 	}
-	if ec.APIURL != config.APIURLNonDefaultMessage {
-		e.APIUrl = ec.APIURL
+	if ec.API.Endpoints.URL != config.APIURLNonDefaultMessage {
+		e.API.Endpoints.URL = ec.API.Endpoints.URL
 	}
-	if ec.APIURLSecondary != config.APIURLNonDefaultMessage {
-		e.APIUrlSecondary = ec.APIURLSecondary
+	if ec.API.Endpoints.URLSecondary != config.APIURLNonDefaultMessage {
+		e.API.Endpoints.URLSecondary = ec.API.Endpoints.URLSecondary
 	}
 	return nil
 }
 
 // GetAPIURL returns the set API URL
 func (e *Base) GetAPIURL() string {
-	return e.APIUrl
+	return e.API.Endpoints.URL
 }
 
 // GetSecondaryAPIURL returns the set Secondary API URL
 func (e *Base) GetSecondaryAPIURL() string {
-	return e.APIUrlSecondary
+	return e.API.Endpoints.URLSecondary
 }
 
 // GetAPIURLDefault returns exchange default URL
 func (e *Base) GetAPIURLDefault() string {
-	return e.APIUrlDefault
+	return e.API.Endpoints.URLDefault
 }
 
 // GetAPIURLSecondaryDefault returns exchange default secondary URL
 func (e *Base) GetAPIURLSecondaryDefault() string {
-	return e.APIUrlSecondaryDefault
+	return e.API.Endpoints.URLSecondaryDefault
 }
 
 // SupportsWebsocket returns whether or not the exchange supports
 // websocket
 func (e *Base) SupportsWebsocket() bool {
-	return e.SupportsWebsocketAPI
+	return e.Features.Supports.Websocket
 }
 
 // SupportsREST returns whether or not the exchange supports
 // REST
 func (e *Base) SupportsREST() bool {
-	return e.SupportsRESTAPI
+	return e.Features.Supports.REST
 }
 
 // IsWebsocketEnabled returns whether or not the exchange has its

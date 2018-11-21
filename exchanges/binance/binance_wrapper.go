@@ -5,15 +5,68 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	exchange "github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
 
-// Start starts the OKEX go routine
+// SetDefaults sets the basic defaults for Binance
+func (b *Binance) SetDefaults() {
+	b.Name = "Binance"
+	b.Enabled = true
+	b.Verbose = true
+	b.RequestCurrencyPairFormat.Uppercase = true
+	b.ConfigCurrencyPairFormat.Delimiter = "-"
+	b.ConfigCurrencyPairFormat.Uppercase = true
+	b.AssetTypes = []string{ticker.Spot}
+	b.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: true,
+			REST:               true,
+			Websocket:          true,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	b.APIWithdrawPermissions = exchange.AutoWithdrawCrypto
+	b.SetValues()
+	b.Requester = request.New(b.Name,
+		request.NewRateLimit(time.Second, binanceAuthRate),
+		request.NewRateLimit(time.Second, binanceUnauthRate),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	b.API.Endpoints.URLDefault = apiURL
+	b.API.Endpoints.URL = b.API.Endpoints.URLDefault
+	b.WebsocketInit()
+}
+
+// Setup takes in the supplied exchange configuration details and sets params
+func (b *Binance) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		b.SetEnabled(false)
+		return nil
+	}
+
+	err := b.SetupDefaults(exch)
+	if err != nil {
+		return err
+	}
+
+	return b.WebsocketSetup(b.WSConnect,
+		exch.Name,
+		exch.Features.Enabled.Websocket,
+		binanceDefaultWebsocketURL,
+		exch.API.Endpoints.WebsocketURL)
+}
+
+// Start starts the Binance go routine
 func (b *Binance) Start(wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func() {
@@ -22,37 +75,61 @@ func (b *Binance) Start(wg *sync.WaitGroup) {
 	}()
 }
 
-// Run implements the OKEX wrapper
+// Run implements the Binance wrapper
 func (b *Binance) Run() {
 	if b.Verbose {
 		log.Printf("%s Websocket: %s. (url: %s).\n", b.GetName(), common.IsEnabled(b.Websocket.IsEnabled()), b.Websocket.GetWebsocketURL())
-		log.Printf("%s polling delay: %ds.\n", b.GetName(), b.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", b.GetName(), len(b.EnabledPairs), b.EnabledPairs)
 	}
 
-	symbols, err := b.GetExchangeValidCurrencyPairs()
-	if err != nil {
-		log.Printf("%s Failed to get exchange info.\n", b.GetName())
-	} else {
-		forceUpgrade := false
-		if !common.StringDataContains(b.EnabledPairs, "-") || !common.StringDataContains(b.AvailablePairs, "-") {
-			forceUpgrade = true
-		}
+	forceUpdate := false
+	if !common.StringDataContains(b.EnabledPairs, "-") || !common.StringDataContains(b.AvailablePairs, "-") {
+		enabledPairs := []string{"BTC-USDT"}
+		log.Println("WARNING: Available pairs for Binance reset due to config upgrade, please enable the ones you would like again")
+		forceUpdate = true
 
-		if forceUpgrade {
-			enabledPairs := []string{"BTC-USDT"}
-			log.Println("WARNING: Available pairs for Binance reset due to config upgrade, please enable the ones you would like again")
-
-			err = b.UpdateCurrencies(enabledPairs, true, true)
-			if err != nil {
-				log.Printf("%s Failed to get config.\n", b.GetName())
-			}
-		}
-		err = b.UpdateCurrencies(symbols, false, forceUpgrade)
+		err := b.UpdatePairs(enabledPairs, true, true)
 		if err != nil {
-			log.Printf("%s Failed to get config.\n", b.GetName())
+			log.Printf("%s failed to update currencies. Err: %s\n", b.Name, err)
 		}
 	}
+
+	if !b.GetEnabledFeatures().AutoPairUpdates && !forceUpdate {
+		return
+	}
+
+	err := b.UpdateTradablePairs(forceUpdate)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", b.Name, err)
+	}
+}
+
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (b *Binance) FetchTradablePairs() ([]string, error) {
+	var validCurrencyPairs []string
+
+	info, err := b.GetExchangeInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, symbol := range info.Symbols {
+		if symbol.Status == "TRADING" {
+			validCurrencyPairs = append(validCurrencyPairs, symbol.BaseAsset+"-"+symbol.QuoteAsset)
+		}
+	}
+	return validCurrencyPairs, nil
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (b *Binance) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := b.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return b.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
@@ -64,7 +141,7 @@ func (b *Binance) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Pr
 		return tickerPrice, err
 	}
 
-	for _, x := range b.GetEnabledCurrencies() {
+	for _, x := range b.GetEnabledPairs() {
 		curr := exchange.FormatExchangeCurrency(b.Name, x)
 		for y := range tick {
 			if tick[y].Symbol == curr.String() {

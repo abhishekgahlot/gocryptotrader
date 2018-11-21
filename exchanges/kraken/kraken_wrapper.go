@@ -4,13 +4,56 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	"github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
+
+// SetDefaults sets current default settings
+func (k *Kraken) SetDefaults() {
+	k.Name = "Kraken"
+	k.Enabled = true
+	k.Verbose = true
+	k.APIWithdrawPermissions = exchange.AutoWithdrawCryptoWithSetup | exchange.WithdrawCryptoWith2FA | exchange.AutoWithdrawFiatWithSetup | exchange.WithdrawFiatWith2FA
+	k.RequestCurrencyPairFormat.Uppercase = true
+	k.RequestCurrencyPairFormat.Separator = ","
+	k.ConfigCurrencyPairFormat.Delimiter = "-"
+	k.ConfigCurrencyPairFormat.Uppercase = true
+	k.AssetTypes = []string{ticker.Spot}
+	k.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: true,
+			REST:               true,
+			Websocket:          false,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	k.Requester = request.New(k.Name,
+		request.NewRateLimit(time.Second, krakenAuthRate),
+		request.NewRateLimit(time.Second, krakenUnauthRate),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	k.API.Endpoints.URLDefault = krakenAPIURL
+	k.API.Endpoints.URL = k.API.Endpoints.URLDefault
+}
+
+// Setup sets current exchange configuration
+func (k *Kraken) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		k.SetEnabled(false)
+		return nil
+	}
+
+	return k.SetupDefaults(exch)
+}
 
 // Start starts the Kraken go routine
 func (k *Kraken) Start(wg *sync.WaitGroup) {
@@ -24,55 +67,72 @@ func (k *Kraken) Start(wg *sync.WaitGroup) {
 // Run implements the Kraken wrapper
 func (k *Kraken) Run() {
 	if k.Verbose {
-		log.Printf("%s polling delay: %ds.\n", k.GetName(), k.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", k.GetName(), len(k.EnabledPairs), k.EnabledPairs)
 	}
 
-	assetPairs, err := k.GetAssetPairs()
-	if err != nil {
-		log.Printf("%s Failed to get available symbols.\n", k.GetName())
-	} else {
-		forceUpgrade := false
-		if !common.StringDataContains(k.EnabledPairs, "-") || !common.StringDataContains(k.AvailablePairs, "-") {
-			forceUpgrade = true
-		}
+	forceUpdate := false
+	if !common.StringDataContains(k.EnabledPairs, "-") || !common.StringDataContains(k.AvailablePairs, "-") {
+		enabledPairs := []string{"XBT-USD"}
+		log.Println("WARNING: Available pairs for Kraken reset due to config upgrade, please enable the ones you would like again")
+		forceUpdate = true
 
-		var exchangeProducts []string
-		for _, v := range assetPairs {
-			if common.StringContains(v.Altname, ".d") {
-				continue
-			}
-			if v.Base[0] == 'X' {
-				if len(v.Base) > 3 {
-					v.Base = v.Base[1:]
-				}
-			}
-			if v.Quote[0] == 'Z' || v.Quote[0] == 'X' {
-				v.Quote = v.Quote[1:]
-			}
-			exchangeProducts = append(exchangeProducts, v.Base+"-"+v.Quote)
-		}
-
-		if forceUpgrade {
-			enabledPairs := []string{"XBT-USD"}
-			log.Println("WARNING: Available pairs for Kraken reset due to config upgrade, please enable the ones you would like again")
-
-			err = k.UpdateCurrencies(enabledPairs, true, true)
-			if err != nil {
-				log.Printf("%s Failed to get config.\n", k.GetName())
-			}
-		}
-		err = k.UpdateCurrencies(exchangeProducts, false, forceUpgrade)
+		err := k.UpdatePairs(enabledPairs, true, true)
 		if err != nil {
-			log.Printf("%s Failed to get config.\n", k.GetName())
+			log.Printf("%s failed to update currencies. Err: %s\n", k.Name, err)
 		}
 	}
+
+	if !k.GetEnabledFeatures().AutoPairUpdates && !forceUpdate {
+		return
+	}
+
+	err := k.UpdateTradablePairs(forceUpdate)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", k.Name, err)
+	}
+}
+
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (k *Kraken) FetchTradablePairs() ([]string, error) {
+	pairs, err := k.GetAssetPairs()
+	if err != nil {
+		return nil, err
+	}
+
+	var products []string
+	for _, v := range pairs {
+		if common.StringContains(v.Altname, ".d") {
+			continue
+		}
+		if v.Base[0] == 'X' {
+			if len(v.Base) > 3 {
+				v.Base = v.Base[1:]
+			}
+		}
+		if v.Quote[0] == 'Z' || v.Quote[0] == 'X' {
+			v.Quote = v.Quote[1:]
+		}
+		products = append(products, v.Base+"-"+v.Quote)
+	}
+
+	return products, nil
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (k *Kraken) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := k.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return k.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
 func (k *Kraken) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Price, error) {
 	var tickerPrice ticker.Price
-	pairs := k.GetEnabledCurrencies()
+	pairs := k.GetEnabledPairs()
 	pairsCollated, err := exchange.GetAndFormatExchangeCurrencies(k.Name, pairs)
 	if err != nil {
 		return tickerPrice, err

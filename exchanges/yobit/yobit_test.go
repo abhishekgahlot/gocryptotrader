@@ -30,11 +30,19 @@ func TestSetup(t *testing.T) {
 	if err != nil {
 		t.Error("Test Failed - Yobit init error")
 	}
-	conf.APIKey = apiKey
-	conf.APISecret = apiSecret
-	conf.AuthenticatedAPISupport = true
+	conf.API.Credentials.Key = apiKey
+	conf.API.Credentials.Secret = apiSecret
+	conf.API.AuthenticatedSupport = true
 
 	y.Setup(conf)
+}
+
+func TestFetchTradablePairs(t *testing.T) {
+	t.Parallel()
+	_, err := y.FetchTradablePairs()
+	if err != nil {
+		t.Errorf("Test failed. FetchTradablePairs err: %s", err)
+	}
 }
 
 func TestGetInfo(t *testing.T) {
@@ -318,18 +326,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	y.SetDefaults()
 	TestSetup(t)
-	y.Verbose = true
 
-	if y.APIKey == "" || y.APISecret == "" ||
-		y.APIKey == "Key" || y.APISecret == "Secret" ||
+	if y.API.Credentials.Key == "" || y.API.Credentials.Secret == "" ||
+		y.API.Credentials.Key == "Key" || y.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", y.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("API.Credentials.Key: %s. Can place orders: %v", y.API.Credentials.Secret, canPlaceOrders))
 	}
+
 	var pair = pair.CurrencyPair{
 		Delimiter:      "_",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.USD,
 	}
+
 	response, err := y.SubmitOrder(pair, exchange.Buy, exchange.Market, 1, 10, "hi")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

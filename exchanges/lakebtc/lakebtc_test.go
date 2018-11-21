@@ -31,16 +31,16 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - LakeBTC Setup() init error")
 	}
 
-	lakebtcConfig.AuthenticatedAPISupport = true
-	lakebtcConfig.APIKey = apiKey
-	lakebtcConfig.APISecret = apiSecret
+	lakebtcConfig.API.AuthenticatedSupport = true
+	lakebtcConfig.API.Credentials.Key = apiKey
+	lakebtcConfig.API.Credentials.Secret = apiSecret
 
 	l.Setup(lakebtcConfig)
 }
 
-func TestGetTradablePairs(t *testing.T) {
+func TestFetchTradablePairs(t *testing.T) {
 	t.Parallel()
-	_, err := l.GetTradablePairs()
+	_, err := l.FetchTradablePairs()
 	if err != nil {
 		t.Fatalf("Test failed. GetTradablePairs err: %s", err)
 	}
@@ -72,7 +72,7 @@ func TestGetTradeHistory(t *testing.T) {
 
 func TestTrade(t *testing.T) {
 	t.Parallel()
-	if l.APIKey == "" || l.APISecret == "" {
+	if l.API.Credentials.Key == "" || l.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 	_, err := l.Trade(false, 0, 0, "USD")
@@ -83,7 +83,7 @@ func TestTrade(t *testing.T) {
 
 func TestGetOpenOrders(t *testing.T) {
 	t.Parallel()
-	if l.APIKey == "" || l.APISecret == "" {
+	if l.API.Credentials.Key == "" || l.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 	_, err := l.GetOpenOrders()
@@ -94,7 +94,7 @@ func TestGetOpenOrders(t *testing.T) {
 
 func TestGetOrders(t *testing.T) {
 	t.Parallel()
-	if l.APIKey == "" || l.APISecret == "" {
+	if l.API.Credentials.Key == "" || l.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 	_, err := l.GetOrders([]int64{1, 2})
@@ -105,7 +105,7 @@ func TestGetOrders(t *testing.T) {
 
 func TestCancelOrder(t *testing.T) {
 	t.Parallel()
-	if l.APIKey == "" || l.APISecret == "" {
+	if l.API.Credentials.Key == "" || l.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 	err := l.CancelOrder(1337)
@@ -116,7 +116,7 @@ func TestCancelOrder(t *testing.T) {
 
 func TestGetTrades(t *testing.T) {
 	t.Parallel()
-	if l.APIKey == "" || l.APISecret == "" {
+	if l.API.Credentials.Key == "" || l.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 	_, err := l.GetTrades(1337)
@@ -127,7 +127,7 @@ func TestGetTrades(t *testing.T) {
 
 func TestGetExternalAccounts(t *testing.T) {
 	t.Parallel()
-	if l.APIKey == "" || l.APISecret == "" {
+	if l.API.Credentials.Key == "" || l.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 	_, err := l.GetExternalAccounts()
@@ -138,7 +138,7 @@ func TestGetExternalAccounts(t *testing.T) {
 
 func TestCreateWithdraw(t *testing.T) {
 	t.Parallel()
-	if l.APIKey == "" || l.APISecret == "" {
+	if l.API.Credentials.Key == "" || l.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 	_, err := l.CreateWithdraw(0, 1337)
@@ -254,18 +254,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	l.SetDefaults()
 	TestSetup(t)
-	l.Verbose = true
 
-	if l.APIKey == "" || l.APISecret == "" ||
-		l.APIKey == "Key" || l.APISecret == "Secret" ||
+	if l.API.Credentials.Key == "" || l.API.Credentials.Secret == "" ||
+		l.API.Credentials.Key == "Key" || l.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", l.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", l.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.EUR,
 	}
+
 	response, err := l.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 10, "hi")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

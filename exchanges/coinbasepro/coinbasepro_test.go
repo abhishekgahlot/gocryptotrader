@@ -33,9 +33,9 @@ func TestSetup(t *testing.T) {
 	if err != nil {
 		t.Error("Test Failed - coinbasepro Setup() init error")
 	}
-	gdxConfig.APIKey = apiKey
-	gdxConfig.APISecret = apiSecret
-	gdxConfig.AuthenticatedAPISupport = true
+	gdxConfig.API.Credentials.Key = apiKey
+	gdxConfig.API.Credentials.Secret = apiSecret
+	gdxConfig.API.AuthenticatedSupport = true
 	c.Setup(gdxConfig)
 }
 
@@ -90,7 +90,7 @@ func TestGetServerTime(t *testing.T) {
 
 func TestAuthRequests(t *testing.T) {
 
-	if c.APIKey != "" && c.APISecret != "" && c.ClientID != "" {
+	if c.API.Credentials.Key != "" && c.API.Credentials.Secret != "" && c.API.Credentials.ClientID != "" {
 
 		_, err := c.GetAccounts()
 		if err == nil {
@@ -414,16 +414,18 @@ func TestSubmitOrder(t *testing.T) {
 	c.SetDefaults()
 	TestSetup(t)
 
-	if c.APIKey == "" || c.APISecret == "" ||
-		c.APIKey == "Key" || c.APISecret == "Secret" ||
+	if c.API.Credentials.Key == "" || c.API.Credentials.Secret == "" ||
+		c.API.Credentials.Key == "Key" || c.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can Place others: %v", c.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can Place others: %v", c.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "-",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.LTC,
 	}
+
 	response, err := c.SubmitOrder(p, exchange.Buy, exchange.Limit, 1, 1, "clientId")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

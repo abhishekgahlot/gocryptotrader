@@ -5,13 +5,57 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	"github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
+
+// SetDefaults sets default values for the exchange
+func (g *Gateio) SetDefaults() {
+	g.Name = "GateIO"
+	g.Enabled = true
+	g.Verbose = true
+	g.APIWithdrawPermissions = exchange.AutoWithdrawCrypto
+	g.RequestCurrencyPairFormat.Delimiter = "_"
+	g.ConfigCurrencyPairFormat.Delimiter = "_"
+	g.ConfigCurrencyPairFormat.Uppercase = true
+	g.AssetTypes = []string{ticker.Spot}
+	g.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: true,
+			REST:               true,
+			Websocket:          false,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	g.Requester = request.New(g.Name,
+		request.NewRateLimit(time.Second*10, gateioAuthRate),
+		request.NewRateLimit(time.Second*10, gateioUnauthRate),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	g.API.Endpoints.URLDefault = gateioTradeURL
+	g.API.Endpoints.URL = g.API.Endpoints.URLDefault
+	g.API.Endpoints.URLSecondaryDefault = gateioMarketURL
+	g.API.Endpoints.URLSecondary = g.API.Endpoints.URLSecondaryDefault
+}
+
+// Setup sets user configuration
+func (g *Gateio) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		g.SetEnabled(false)
+		return nil
+	}
+
+	return g.SetupDefaults(exch)
+}
 
 // Start starts the GateIO go routine
 func (g *Gateio) Start(wg *sync.WaitGroup) {
@@ -25,19 +69,33 @@ func (g *Gateio) Start(wg *sync.WaitGroup) {
 // Run implements the GateIO wrapper
 func (g *Gateio) Run() {
 	if g.Verbose {
-		log.Printf("%s polling delay: %ds.\n", g.GetName(), g.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", g.GetName(), len(g.EnabledPairs), g.EnabledPairs)
 	}
 
-	symbols, err := g.GetSymbols()
-	if err != nil {
-		log.Printf("%s Unable to fetch symbols.\n", g.GetName())
-	} else {
-		err = g.UpdateCurrencies(symbols, false, false)
-		if err != nil {
-			log.Printf("%s Failed to update available currencies.\n", g.GetName())
-		}
+	if !g.GetEnabledFeatures().AutoPairUpdates {
+		return
 	}
+
+	err := g.UpdateTradablePairs(false)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", g.Name, err)
+	}
+}
+
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (g *Gateio) FetchTradablePairs() ([]string, error) {
+	return g.GetSymbols()
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (g *Gateio) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := g.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return g.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
@@ -48,7 +106,7 @@ func (g *Gateio) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Pri
 		return tickerPrice, err
 	}
 
-	for _, x := range g.GetEnabledCurrencies() {
+	for _, x := range g.GetEnabledPairs() {
 		currency := exchange.FormatExchangeCurrency(g.Name, x).String()
 		var tp ticker.Price
 		tp.Pair = x

@@ -88,13 +88,13 @@ func (b *Bitfinex) WsSendAuth() error {
 	request := make(map[string]interface{})
 	payload := "AUTH" + strconv.FormatInt(time.Now().UnixNano(), 10)[:13]
 	request["event"] = "auth"
-	request["apiKey"] = b.APIKey
+	request["apiKey"] = b.API.Credentials.Key
 
 	request["authSig"] = common.HexEncodeToString(
 		common.GetHMAC(
 			common.HashSHA512_384,
 			[]byte(payload),
-			[]byte(b.APISecret)))
+			[]byte(b.API.Credentials.Secret)))
 
 	request["authPayload"] = payload
 
@@ -178,7 +178,7 @@ func (b *Bitfinex) WsConnect() error {
 		}
 	}
 
-	if b.AuthenticatedAPISupport {
+	if b.API.AuthenticatedSupport {
 		err = b.WsSendAuth()
 		if err != nil {
 			return err
@@ -265,7 +265,7 @@ func (b *Bitfinex) WsDataHandler() {
 							b.Websocket.DataHandler <- fmt.Errorf("bitfinex.go error - Websocket unable to AUTH. Error code: %s",
 								eventData["code"].(string))
 
-							b.AuthenticatedAPISupport = false
+							b.API.AuthenticatedSupport = false
 						}
 					}
 

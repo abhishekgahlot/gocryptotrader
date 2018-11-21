@@ -32,9 +32,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - GateIO Setup() init error")
 	}
 
-	gateioConfig.AuthenticatedAPISupport = true
-	gateioConfig.APIKey = apiKey
-	gateioConfig.APISecret = apiSecret
+	gateioConfig.API.AuthenticatedSupport = true
+	gateioConfig.API.Credentials.Key = apiKey
+	gateioConfig.API.Credentials.Secret = apiSecret
 
 	g.Setup(gateioConfig)
 }
@@ -256,18 +256,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	g.SetDefaults()
 	TestSetup(t)
-	g.Verbose = true
 
-	if g.APIKey == "" || g.APISecret == "" ||
-		g.APIKey == "Key" || g.APISecret == "Secret" ||
+	if g.API.Credentials.Key == "" || g.API.Credentials.Secret == "" ||
+		g.API.Credentials.Key == "Key" || g.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", g.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", g.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "_",
 		FirstCurrency:  symbol.LTC,
 		SecondCurrency: symbol.BTC,
 	}
+
 	response, err := g.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 10, "1234234")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

@@ -32,9 +32,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - Poloniex Setup() init error")
 	}
 
-	poloniexConfig.AuthenticatedAPISupport = true
-	poloniexConfig.APIKey = apiKey
-	poloniexConfig.APISecret = apiSecret
+	poloniexConfig.API.AuthenticatedSupport = true
+	poloniexConfig.API.Credentials.Key = apiKey
+	poloniexConfig.API.Credentials.Secret = apiSecret
 
 	p.Setup(poloniexConfig)
 }
@@ -199,18 +199,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	p.SetDefaults()
 	TestSetup(t)
-	p.Verbose = true
 
-	if p.APIKey == "" || p.APISecret == "" ||
-		p.APIKey == "Key" || p.APISecret == "Secret" ||
+	if p.API.Credentials.Key == "" || p.API.Credentials.Secret == "" ||
+		p.API.Credentials.Key == "Key" || p.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", p.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", p.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var pair = pair.CurrencyPair{
 		Delimiter:      "_",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.LTC,
 	}
+
 	response, err := p.SubmitOrder(pair, exchange.Buy, exchange.Market, 1, 10, "hi")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

@@ -32,9 +32,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - Bitmex Setup() init error")
 	}
 
-	bitmexConfig.AuthenticatedAPISupport = true
-	bitmexConfig.APIKey = testAPIKey
-	bitmexConfig.APISecret = testAPISecret
+	bitmexConfig.API.AuthenticatedSupport = true
+	bitmexConfig.API.Credentials.Key = testAPIKey
+	bitmexConfig.API.Credentials.Secret = testAPISecret
 
 	b.Setup(bitmexConfig)
 }
@@ -470,16 +470,18 @@ func TestSubmitOrder(t *testing.T) {
 	b.SetDefaults()
 	TestSetup(t)
 
-	if b.APIKey == "" || b.APISecret == "" ||
-		b.APIKey == "Key" || b.APISecret == "Secret" ||
+	if b.API.Credentials.Key == "" || b.API.Credentials.Secret == "" ||
+		b.API.Credentials.Key == "Key" || b.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
 		t.Skip()
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "",
 		FirstCurrency:  symbol.XBT,
 		SecondCurrency: symbol.USD,
 	}
+
 	response, err := b.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 1, "clientId")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

@@ -33,10 +33,10 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - Gemini Setup() init error")
 	}
 
-	itbitConfig.AuthenticatedAPISupport = true
-	itbitConfig.APIKey = apiKey
-	itbitConfig.APISecret = apiSecret
-	itbitConfig.ClientID = clientID
+	itbitConfig.API.AuthenticatedSupport = true
+	itbitConfig.API.Credentials.Key = apiKey
+	itbitConfig.API.Credentials.Secret = apiSecret
+	itbitConfig.API.Credentials.ClientID = clientID
 
 	i.Setup(itbitConfig)
 }
@@ -252,10 +252,10 @@ func TestSubmitOrder(t *testing.T) {
 	TestSetup(t)
 	i.Verbose = true
 
-	if i.APIKey == "" || i.APISecret == "" ||
-		i.APIKey == "Key" || i.APISecret == "Secret" ||
+	if i.API.Credentials.Key == "" || i.API.Credentials.Secret == "" ||
+		i.API.Credentials.Key == "Key" || i.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", i.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", i.API.Credentials.Key, canPlaceOrders))
 	}
 	var p = pair.CurrencyPair{
 		Delimiter:      "",

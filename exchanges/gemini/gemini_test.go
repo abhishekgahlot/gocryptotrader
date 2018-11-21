@@ -58,7 +58,7 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - Gemini Setup() init error")
 	}
 
-	geminiConfig.AuthenticatedAPISupport = true
+	geminiConfig.API.AuthenticatedSupport = true
 
 	Session[1].Setup(geminiConfig)
 	Session[2].Setup(geminiConfig)
@@ -332,10 +332,10 @@ func TestSubmitOrder(t *testing.T) {
 	TestSetup(t)
 	Session[1].Verbose = true
 
-	if Session[1].APIKey == "" || Session[1].APISecret == "" ||
-		Session[1].APIKey == "Key" || Session[1].APISecret == "Secret" ||
+	if Session[1].API.Credentials.Key == "" || Session[1].API.Credentials.Secret == "" ||
+		Session[1].API.Credentials.Key == "Key" || Session[1].API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", Session[1].APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", Session[1].API.Credentials.Key, canPlaceOrders))
 	}
 	var p = pair.CurrencyPair{
 		Delimiter:      "_",

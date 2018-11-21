@@ -32,9 +32,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - OKCoin Setup() init error")
 	}
 
-	okcoinConfig.AuthenticatedAPISupport = true
-	okcoinConfig.APIKey = apiKey
-	okcoinConfig.APISecret = apiSecret
+	okcoinConfig.API.AuthenticatedSupport = true
+	okcoinConfig.API.Credentials.Key = apiKey
+	okcoinConfig.API.Credentials.Secret = apiSecret
 
 	o.Setup(okcoinConfig)
 }
@@ -154,18 +154,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	o.SetDefaults()
 	TestSetup(t)
-	o.Verbose = true
 
-	if o.APIKey == "" || o.APISecret == "" ||
-		o.APIKey == "Key" || o.APISecret == "Secret" ||
+	if o.API.Credentials.Key == "" || o.API.Credentials.Secret == "" ||
+		o.API.Credentials.Key == "Key" || o.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", o.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", o.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.EUR,
 	}
+
 	response, err := o.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 10, "hi")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

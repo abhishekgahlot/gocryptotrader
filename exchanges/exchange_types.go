@@ -170,36 +170,90 @@ type FundHistory struct {
 	BankFrom          string
 }
 
+// AuthenticatedAPICredentials stores the API credentials
+type AuthenticatedAPICredentials struct {
+	APIKey             string
+	APIPEMKey          string
+	APISecret          string
+	Base64DecodeSecret bool
+}
+
+// AuthenticatedAPIValidator validates the supplied
+// API credentials
+type AuthenticatedAPIValidator struct {
+	RequiresClientID bool
+	RequiresPEMKey   bool
+	RequiresAPIKey   bool
+}
+
+// Features stores the supported and enabled features
+// for the exchange
+type Features struct {
+	Supports FeaturesSupported
+	Enabled  FeaturesEnabled
+}
+
+// FeaturesEnabled stores the exchange enabled features
+type FeaturesEnabled struct {
+	AutoPairUpdates bool
+}
+
+// FeaturesSupported stores the exchange supported features
+type FeaturesSupported struct {
+	REST               bool
+	Websocket          bool
+	AutoPairUpdates    bool
+	RESTTickerBatching bool
+}
+
+// API stores the exchange API settings
+type API struct {
+	AuthenticatedSupport bool
+	PEMKeySupport        bool
+
+	Endpoints struct {
+		URL                 string
+		URLDefault          string
+		URLSecondary        string
+		URLSecondaryDefault string
+		WebsocketURL        string
+	}
+
+	Credentials struct {
+		Key      string
+		Secret   string
+		ClientID string
+		PEMKey   string
+	}
+
+	CredentialsValidator struct {
+		// For Huobi (optional)
+		RequiresPEM bool
+
+		RequiresClientID           bool
+		RequiresBase64DecodeSecret bool
+	}
+}
+
 // Base stores the individual exchange information
 type Base struct {
-	Name                                       string
-	Enabled                                    bool
-	Verbose                                    bool
-	RESTPollingDelay                           time.Duration
-	AuthenticatedAPISupport                    bool
-	APIWithdrawPermissions                     uint32
-	APIAuthPEMKeySupport                       bool
-	APISecret, APIKey, APIAuthPEMKey, ClientID string
-	Nonce                                      nonce.Nonce
-	TakerFee, MakerFee, Fee                    float64
-	BaseCurrencies                             []string
-	AvailablePairs                             []string
-	EnabledPairs                               []string
-	AssetTypes                                 []string
-	PairsLastUpdated                           int64
-	SupportsAutoPairUpdating                   bool
-	SupportsRESTTickerBatching                 bool
-	SupportsWebsocketAPI                       bool
-	SupportsRESTAPI                            bool
-	HTTPTimeout                                time.Duration
-	HTTPUserAgent                              string
-	WebsocketURL                               string
-	APIUrl                                     string
-	APIUrlDefault                              string
-	APIUrlSecondary                            string
-	APIUrlSecondaryDefault                     string
-	RequestCurrencyPairFormat                  config.CurrencyPairFormatConfig
-	ConfigCurrencyPairFormat                   config.CurrencyPairFormatConfig
-	Websocket                                  *Websocket
+	Name                      string
+	Enabled                   bool
+	Verbose                   bool
+	APIWithdrawPermissions    uint32
+	API                       API
+	Nonce                     nonce.Nonce
+	BaseCurrencies            []string
+	AvailablePairs            []string
+	EnabledPairs              []string
+	AssetTypes                []string
+	PairsLastUpdated          int64
+	Features                  Features
+	HTTPTimeout               time.Duration
+	HTTPUserAgent             string
+	WebsocketURL              string
+	RequestCurrencyPairFormat config.CurrencyPairFormatConfig
+	ConfigCurrencyPairFormat  config.CurrencyPairFormatConfig
+	Websocket                 *Websocket
 	*request.Requester
 }

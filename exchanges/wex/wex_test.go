@@ -30,18 +30,18 @@ func TestSetup(t *testing.T) {
 	if err != nil {
 		t.Error("Test Failed - WEX init error")
 	}
-	conf.APIKey = apiKey
-	conf.APISecret = apiSecret
-	conf.AuthenticatedAPISupport = true
+	conf.API.Credentials.Key = apiKey
+	conf.API.Credentials.Secret = apiSecret
+	conf.API.AuthenticatedSupport = true
 
 	w.Setup(conf)
 }
 
-func TestGetTradablePairs(t *testing.T) {
+func TestFetchTradablePairs(t *testing.T) {
 	t.Parallel()
-	_, err := w.GetTradablePairs()
+	_, err := w.FetchTradablePairs()
 	if err != nil {
-		t.Errorf("Test failed. GetTradablePairs err: %s", err)
+		t.Errorf("Test failed. FetchTradablePairs() err: %s", err)
 	}
 }
 
@@ -274,18 +274,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	w.SetDefaults()
 	TestSetup(t)
-	w.Verbose = true
 
-	if w.APIKey == "" || w.APISecret == "" ||
-		w.APIKey == "Key" || w.APISecret == "Secret" ||
+	if w.API.Credentials.Key == "" || w.API.Credentials.Secret == "" ||
+		w.API.Credentials.Key == "Key" || w.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", w.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("API.Credentials.Key: %s. Can place orders: %v", w.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var pair = pair.CurrencyPair{
 		Delimiter:      "_",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.USD,
 	}
+
 	response, err := w.SubmitOrder(pair, exchange.Buy, exchange.Market, 1, 10, "hi")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

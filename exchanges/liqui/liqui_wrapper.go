@@ -4,13 +4,59 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	"github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
+
+// SetDefaults sets current default values for liqui
+func (l *Liqui) SetDefaults() {
+	l.Name = "Liqui"
+	l.Enabled = true
+	l.Verbose = true
+	l.APIWithdrawPermissions = exchange.NoAPIWithdrawalMethods
+	l.RequestCurrencyPairFormat.Delimiter = "_"
+	l.RequestCurrencyPairFormat.Separator = "-"
+	l.ConfigCurrencyPairFormat.Delimiter = "_"
+	l.ConfigCurrencyPairFormat.Uppercase = true
+	l.AssetTypes = []string{ticker.Spot}
+	l.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: true,
+			REST:               true,
+			Websocket:          false,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	l.Requester = request.New(l.Name,
+		request.NewRateLimit(time.Second, liquiAuthRate),
+		request.NewRateLimit(time.Second, liquiUnauthRate),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	l.API.Endpoints.URLDefault = liquiAPIPublicURL
+	l.API.Endpoints.URL = l.API.Endpoints.URLDefault
+	l.API.Endpoints.URLSecondaryDefault = liquiAPIPrivateURL
+	l.API.Endpoints.URLSecondary = l.API.Endpoints.URLSecondaryDefault
+	l.WebsocketInit()
+}
+
+// Setup sets exchange configuration parameters for liqui
+func (l *Liqui) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		l.SetEnabled(false)
+		return nil
+	}
+
+	return l.SetupDefaults(exch)
+}
 
 // Start starts the Liqui go routine
 func (l *Liqui) Start(wg *sync.WaitGroup) {
@@ -24,28 +70,40 @@ func (l *Liqui) Start(wg *sync.WaitGroup) {
 // Run implements the Liqui wrapper
 func (l *Liqui) Run() {
 	if l.Verbose {
-		log.Printf("%s polling delay: %ds.\n", l.GetName(), l.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", l.GetName(), len(l.EnabledPairs), l.EnabledPairs)
 	}
 
-	var err error
-	l.Info, err = l.GetInfo()
-	if err != nil {
-		log.Printf("%s Unable to fetch info.\n", l.GetName())
-	} else {
-		exchangeProducts := l.GetAvailablePairs(true)
-		err = l.UpdateCurrencies(exchangeProducts, false, false)
-		if err != nil {
-			log.Printf("%s Failed to get config.\n", l.GetName())
-		}
+	if !l.GetEnabledFeatures().AutoPairUpdates {
+		return
 	}
+
+	err := l.UpdateTradablePairs(false)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", l.Name, err)
+	}
+}
+
+// FetchTradablePairs returns all available pairs
+func (l *Liqui) FetchTradablePairs() ([]string, error) {
+	return l.GetTradablePairs(true)
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (l *Liqui) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := l.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return l.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
 func (l *Liqui) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Price, error) {
 	var tickerPrice ticker.Price
 	pairsString, err := exchange.GetAndFormatExchangeCurrencies(l.Name,
-		l.GetEnabledCurrencies())
+		l.GetEnabledPairs())
 	if err != nil {
 		return tickerPrice, err
 	}
@@ -55,7 +113,7 @@ func (l *Liqui) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Pric
 		return tickerPrice, err
 	}
 
-	for _, x := range l.GetEnabledCurrencies() {
+	for _, x := range l.GetEnabledPairs() {
 		currency := exchange.FormatExchangeCurrency(l.Name, x).String()
 		var tp ticker.Price
 		tp.Pair = x

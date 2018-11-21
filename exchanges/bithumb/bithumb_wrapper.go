@@ -5,15 +5,57 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	exchange "github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
 
-// Start starts the OKEX go routine
+// SetDefaults sets the basic defaults for Bithumb
+func (b *Bithumb) SetDefaults() {
+	b.Name = "Bithumb"
+	b.Enabled = true
+	b.Verbose = true
+	b.APIWithdrawPermissions = exchange.AutoWithdrawCrypto | exchange.AutoWithdrawFiat
+	b.RequestCurrencyPairFormat.Uppercase = true
+	b.ConfigCurrencyPairFormat.Uppercase = true
+	b.ConfigCurrencyPairFormat.Index = "KRW"
+	b.AssetTypes = []string{ticker.Spot}
+	b.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: true,
+			REST:               true,
+			Websocket:          false,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	b.Requester = request.New(b.Name,
+		request.NewRateLimit(time.Second, bithumbAuthRate),
+		request.NewRateLimit(time.Second, bithumbUnauthRate),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	b.API.Endpoints.URLDefault = apiURL
+	b.API.Endpoints.URL = b.API.Endpoints.URLDefault
+}
+
+// Setup takes in the supplied exchange configuration details and sets params
+func (b *Bithumb) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		b.SetEnabled(false)
+		return nil
+	}
+
+	return b.SetupDefaults(exch)
+}
+
+// Start starts the Bithumb go routine
 func (b *Bithumb) Start(wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func() {
@@ -22,26 +64,24 @@ func (b *Bithumb) Start(wg *sync.WaitGroup) {
 	}()
 }
 
-// Run implements the OKEX wrapper
+// Run implements the Bithumb wrapper
 func (b *Bithumb) Run() {
 	if b.Verbose {
-		log.Printf("%s polling delay: %ds.\n", b.GetName(), b.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", b.GetName(), len(b.EnabledPairs), b.EnabledPairs)
 	}
 
-	exchangeProducts, err := b.GetTradingPairs()
+	if !b.GetEnabledFeatures().AutoPairUpdates {
+		return
+	}
+
+	err := b.UpdateTradablePairs(false)
 	if err != nil {
-		log.Printf("%s Failed to get available symbols.\n", b.GetName())
-	} else {
-		err = b.UpdateCurrencies(exchangeProducts, false, false)
-		if err != nil {
-			log.Printf("%s Failed to update available symbols.\n", b.GetName())
-		}
+		log.Printf("%s failed to update tradable pairs. Err: %s", b.Name, err)
 	}
 }
 
-// GetTradingPairs gets the available trading currencies
-func (b *Bithumb) GetTradingPairs() ([]string, error) {
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (b *Bithumb) FetchTradablePairs() ([]string, error) {
 	currencies, err := b.GetTradablePairs()
 	if err != nil {
 		return nil, err
@@ -54,6 +94,17 @@ func (b *Bithumb) GetTradingPairs() ([]string, error) {
 	return currencies, nil
 }
 
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (b *Bithumb) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := b.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return b.UpdatePairs(pairs, false, forceUpdate)
+}
+
 // UpdateTicker updates and returns the ticker for a currency pair
 func (b *Bithumb) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Price, error) {
 	var tickerPrice ticker.Price
@@ -63,7 +114,7 @@ func (b *Bithumb) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Pr
 		return tickerPrice, err
 	}
 
-	for _, x := range b.GetEnabledCurrencies() {
+	for _, x := range b.GetEnabledPairs() {
 		currency := x.FirstCurrency.String()
 		var tp ticker.Price
 		tp.Pair = x

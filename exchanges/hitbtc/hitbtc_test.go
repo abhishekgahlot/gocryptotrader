@@ -32,9 +32,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - HitBTC Setup() init error")
 	}
 
-	hitbtcConfig.AuthenticatedAPISupport = true
-	hitbtcConfig.APIKey = apiKey
-	hitbtcConfig.APISecret = apiSecret
+	hitbtcConfig.API.AuthenticatedSupport = true
+	hitbtcConfig.API.Credentials.Key = apiKey
+	hitbtcConfig.API.Credentials.Secret = apiSecret
 
 	h.Setup(hitbtcConfig)
 }
@@ -181,18 +181,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	h.SetDefaults()
 	TestSetup(t)
-	h.Verbose = true
 
-	if h.APIKey == "" || h.APISecret == "" ||
-		h.APIKey == "Key" || h.APISecret == "Secret" ||
+	if h.API.Credentials.Key == "" || h.API.Credentials.Secret == "" ||
+		h.API.Credentials.Key == "Key" || h.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", h.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", h.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "",
 		FirstCurrency:  symbol.DGD,
 		SecondCurrency: symbol.BTC,
 	}
+
 	response, err := h.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 10, "1234234")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

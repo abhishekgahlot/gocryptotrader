@@ -4,13 +4,56 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	exchange "github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
+
+// SetDefaults method assignes the default values for Bittrex
+func (b *Bittrex) SetDefaults() {
+	b.Name = "Bittrex"
+	b.Enabled = true
+	b.Verbose = true
+	b.APIWithdrawPermissions = exchange.AutoWithdrawCryptoWithAPIPermission
+	b.RequestCurrencyPairFormat.Delimiter = "-"
+	b.RequestCurrencyPairFormat.Uppercase = true
+	b.ConfigCurrencyPairFormat.Delimiter = "-"
+	b.ConfigCurrencyPairFormat.Uppercase = true
+	b.AssetTypes = []string{ticker.Spot}
+	b.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: true,
+			REST:               true,
+			Websocket:          false,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	b.Requester = request.New(b.Name,
+		request.NewRateLimit(time.Second, bittrexAuthRate),
+		request.NewRateLimit(time.Second, bittrexUnauthRate),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	b.API.Endpoints.URLDefault = bittrexAPIURL
+	b.API.Endpoints.URL = b.API.Endpoints.URLDefault
+}
+
+// Setup method sets current configuration details if enabled
+func (b *Bittrex) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		b.SetEnabled(false)
+		return nil
+	}
+
+	return b.SetupDefaults(exch)
+}
 
 // Start starts the Bittrex go routine
 func (b *Bittrex) Start(wg *sync.WaitGroup) {
@@ -24,40 +67,58 @@ func (b *Bittrex) Start(wg *sync.WaitGroup) {
 // Run implements the Bittrex wrapper
 func (b *Bittrex) Run() {
 	if b.Verbose {
-		log.Printf("%s polling delay: %ds.\n", b.GetName(), b.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", b.GetName(), len(b.EnabledPairs), b.EnabledPairs)
 	}
 
-	exchangeProducts, err := b.GetMarkets()
-	if err != nil {
-		log.Printf("%s Failed to get available symbols.\n", b.GetName())
-	} else {
-		forceUpgrade := false
-		if !common.StringDataContains(b.EnabledPairs, "-") || !common.StringDataContains(b.AvailablePairs, "-") {
-			forceUpgrade = true
-		}
-		var currencies []string
-		for x := range exchangeProducts.Result {
-			if !exchangeProducts.Result[x].IsActive || exchangeProducts.Result[x].MarketName == "" {
-				continue
-			}
-			currencies = append(currencies, exchangeProducts.Result[x].MarketName)
-		}
+	forceUpdate := false
+	if !common.StringDataContains(b.EnabledPairs, "-") || !common.StringDataContains(b.AvailablePairs, "-") {
+		forceUpdate = true
+		enabledPairs := []string{"USDT-BTC"}
+		log.Println("WARNING: Available pairs for Bittrex reset due to config upgrade, please enable the ones you would like again")
 
-		if forceUpgrade {
-			enabledPairs := []string{"USDT-BTC"}
-			log.Println("WARNING: Available pairs for Bittrex reset due to config upgrade, please enable the ones you would like again")
-
-			err = b.UpdateCurrencies(enabledPairs, true, true)
-			if err != nil {
-				log.Printf("%s Failed to get config.\n", b.GetName())
-			}
-		}
-		err = b.UpdateCurrencies(currencies, false, forceUpgrade)
+		err := b.UpdatePairs(enabledPairs, true, true)
 		if err != nil {
-			log.Printf("%s Failed to get config.\n", b.GetName())
+			log.Printf("%s failed to update currencies. Err: %s\n", b.Name, err)
 		}
 	}
+
+	if !b.GetEnabledFeatures().AutoPairUpdates && !forceUpdate {
+		return
+	}
+
+	err := b.UpdateTradablePairs(forceUpdate)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", b.Name, err)
+	}
+}
+
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (b *Bittrex) FetchTradablePairs() ([]string, error) {
+	markets, err := b.GetMarkets()
+	if err != nil {
+		return nil, err
+	}
+
+	var pairs []string
+	for x := range markets.Result {
+		if !markets.Result[x].IsActive || markets.Result[x].MarketName == "" {
+			continue
+		}
+		pairs = append(pairs, markets.Result[x].MarketName)
+	}
+
+	return pairs, nil
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (b *Bittrex) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := b.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return b.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // GetAccountInfo Retrieves balances for all enabled currencies for the
@@ -88,7 +149,7 @@ func (b *Bittrex) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Pr
 		return tickerPrice, err
 	}
 
-	for _, x := range b.GetEnabledCurrencies() {
+	for _, x := range b.GetEnabledPairs() {
 		curr := exchange.FormatExchangeCurrency(b.Name, x)
 		for y := range tick.Result {
 			if tick.Result[y].MarketName == curr.String() {

@@ -31,18 +31,21 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - liqui Setup() init error")
 	}
 
-	liquiConfig.AuthenticatedAPISupport = true
-	liquiConfig.APIKey = apiKey
-	liquiConfig.APISecret = apiSecret
+	liquiConfig.API.AuthenticatedSupport = true
+	liquiConfig.API.Credentials.Key = apiKey
+	liquiConfig.API.Credentials.Secret = apiSecret
 
 	l.Setup(liquiConfig)
 }
 
-func TestGetAvailablePairs(t *testing.T) {
+func TestGetTradablePairs(t *testing.T) {
 	t.Parallel()
-	v := l.GetAvailablePairs(false)
-	if len(v) != 0 {
-		t.Error("Test Failed - liqui GetFee() error")
+	v, err := l.GetTradablePairs(false)
+	if len(v) == 0 {
+		t.Error("Test Failed - liqui GetTradablePairs() empty pairs")
+	}
+	if err != nil {
+		t.Errorf("Test Failed - liqui GetTradablePairs() err: %s", err)
 	}
 }
 
@@ -79,7 +82,7 @@ func TestGetTrades(t *testing.T) {
 }
 
 func TestAuthRequests(t *testing.T) {
-	if l.APIKey != "" && l.APISecret != "" {
+	if l.API.Credentials.Key != "" && l.API.Credentials.Secret != "" {
 		_, err := l.GetAccountInfo()
 		if err == nil {
 			t.Error("Test Failed - liqui GetAccountInfo() error", err)
@@ -239,18 +242,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	l.SetDefaults()
 	TestSetup(t)
-	l.Verbose = true
 
-	if l.APIKey == "" || l.APISecret == "" ||
-		l.APIKey == "Key" || l.APISecret == "Secret" ||
+	if l.API.Credentials.Key == "" || l.API.Credentials.Secret == "" ||
+		l.API.Credentials.Key == "Key" || l.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", l.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", l.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.EUR,
 	}
+
 	response, err := l.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 10, "hi")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

@@ -5,13 +5,65 @@ import (
 	"log"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	"github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
+
+// SetDefaults sets the basic defaults for bitfinex
+func (b *Bitfinex) SetDefaults() {
+	b.Name = "Bitfinex"
+	b.Enabled = true
+	b.Verbose = true
+	b.WebsocketSubdChannels = make(map[int]WebsocketChanInfo)
+	b.APIWithdrawPermissions = exchange.AutoWithdrawCryptoWithAPIPermission | exchange.AutoWithdrawFiatWithAPIPermission
+	b.RequestCurrencyPairFormat.Uppercase = true
+	b.ConfigCurrencyPairFormat.Uppercase = true
+	b.AssetTypes = []string{ticker.Spot}
+	b.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: true,
+			REST:               true,
+			Websocket:          true,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	b.Requester = request.New(b.Name,
+		request.NewRateLimit(time.Second*60, bitfinexAuthRate),
+		request.NewRateLimit(time.Second*60, bitfinexUnauthRate),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	b.API.Endpoints.URLDefault = bitfinexAPIURLBase
+	b.API.Endpoints.URL = b.API.Endpoints.URLDefault
+	b.WebsocketInit()
+}
+
+// Setup takes in the supplied exchange configuration details and sets params
+func (b *Bitfinex) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		b.SetEnabled(false)
+		return nil
+	}
+
+	err := b.SetupDefaults(exch)
+	if err != nil {
+		return err
+	}
+
+	return b.WebsocketSetup(b.WsConnect,
+		exch.Name,
+		exch.Features.Enabled.Websocket,
+		bitfinexWebsocket,
+		exch.API.Endpoints.WebsocketURL)
+}
 
 // Start starts the Bitfinex go routine
 func (b *Bitfinex) Start(wg *sync.WaitGroup) {
@@ -26,25 +78,39 @@ func (b *Bitfinex) Start(wg *sync.WaitGroup) {
 func (b *Bitfinex) Run() {
 	if b.Verbose {
 		log.Printf("%s Websocket: %s.", b.GetName(), common.IsEnabled(b.Websocket.IsEnabled()))
-		log.Printf("%s polling delay: %ds.\n", b.GetName(), b.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", b.GetName(), len(b.EnabledPairs), b.EnabledPairs)
 	}
 
-	exchangeProducts, err := b.GetSymbols()
-	if err != nil {
-		log.Printf("%s Failed to get available symbols.\n", b.GetName())
-	} else {
-		err = b.UpdateCurrencies(exchangeProducts, false, false)
-		if err != nil {
-			log.Printf("%s Failed to update available symbols.\n", b.GetName())
-		}
+	if !b.GetEnabledFeatures().AutoPairUpdates {
+		return
 	}
+
+	err := b.UpdateTradablePairs(false)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", b.Name, err)
+	}
+}
+
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (b *Bitfinex) FetchTradablePairs() ([]string, error) {
+	return b.GetSymbols()
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (b *Bitfinex) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := b.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return b.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
 func (b *Bitfinex) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Price, error) {
 	var tickerPrice ticker.Price
-	enabledPairs := b.GetEnabledCurrencies()
+	enabledPairs := b.GetEnabledPairs()
 
 	var pairs []string
 	for x := range enabledPairs {

@@ -4,13 +4,60 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	exchange "github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
+
+// SetDefaults sets current default value for Yobit
+func (y *Yobit) SetDefaults() {
+	y.Name = "Yobit"
+	y.Enabled = true
+	y.Verbose = false
+	y.API.AuthenticatedSupport = true
+	y.APIWithdrawPermissions = exchange.AutoWithdrawCryptoWithAPIPermission | exchange.WithdrawFiatViaWebsiteOnly
+	y.RequestCurrencyPairFormat.Delimiter = "_"
+	y.RequestCurrencyPairFormat.Uppercase = false
+	y.RequestCurrencyPairFormat.Separator = "-"
+	y.ConfigCurrencyPairFormat.Delimiter = "_"
+	y.ConfigCurrencyPairFormat.Uppercase = true
+	y.AssetTypes = []string{ticker.Spot}
+	y.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: true,
+			REST:               true,
+			Websocket:          false,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	y.Requester = request.New(y.Name,
+		request.NewRateLimit(time.Second, yobitAuthRate),
+		request.NewRateLimit(time.Second, yobitUnauthRate),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	y.API.Endpoints.URLDefault = apiPublicURL
+	y.API.Endpoints.URL = y.API.Endpoints.URLDefault
+	y.API.Endpoints.URLSecondaryDefault = apiPrivateURL
+	y.API.Endpoints.URLSecondary = y.API.Endpoints.URLSecondaryDefault
+}
+
+// Setup sets exchange configuration parameters for Yobit
+func (y *Yobit) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		y.SetEnabled(false)
+		return nil
+	}
+
+	return y.SetupDefaults(exch)
+}
 
 // Start starts the WEX go routine
 func (y *Yobit) Start(wg *sync.WaitGroup) {
@@ -24,15 +71,49 @@ func (y *Yobit) Start(wg *sync.WaitGroup) {
 // Run implements the Yobit wrapper
 func (y *Yobit) Run() {
 	if y.Verbose {
-		log.Printf("%s polling delay: %ds.\n", y.GetName(), y.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", y.GetName(), len(y.EnabledPairs), y.EnabledPairs)
 	}
+
+	if !y.GetEnabledFeatures().AutoPairUpdates {
+		return
+	}
+
+	err := y.UpdateTradablePairs(false)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", y.Name, err)
+	}
+}
+
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (y *Yobit) FetchTradablePairs() ([]string, error) {
+	info, err := y.GetInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	var currencies []string
+	for x := range info.Pairs {
+		currencies = append(currencies, common.StringToUpper(x))
+	}
+
+	return currencies, nil
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (y *Yobit) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := y.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return y.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
 func (y *Yobit) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Price, error) {
 	var tickerPrice ticker.Price
-	pairsCollated, err := exchange.GetAndFormatExchangeCurrencies(y.Name, y.GetEnabledCurrencies())
+	pairsCollated, err := exchange.GetAndFormatExchangeCurrencies(y.Name, y.GetEnabledPairs())
 	if err != nil {
 		return tickerPrice, err
 	}
@@ -42,7 +123,7 @@ func (y *Yobit) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Pric
 		return tickerPrice, err
 	}
 
-	for _, x := range y.GetEnabledCurrencies() {
+	for _, x := range y.GetEnabledPairs() {
 		currency := exchange.FormatExchangeCurrency(y.Name, x).Lower().String()
 		var tickerPrice ticker.Price
 		tickerPrice.Pair = x

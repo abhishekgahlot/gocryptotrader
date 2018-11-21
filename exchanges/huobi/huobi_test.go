@@ -30,22 +30,27 @@ var h HUOBI
 // getDefaultConfig returns a default huobi config
 func getDefaultConfig() config.ExchangeConfig {
 	return config.ExchangeConfig{
-		Name:                    "Huobi",
-		Enabled:                 true,
-		Verbose:                 true,
-		Websocket:               false,
-		UseSandbox:              false,
-		RESTPollingDelay:        10,
-		HTTPTimeout:             15000000000,
-		AuthenticatedAPISupport: true,
-		APIKey:                  "",
-		APISecret:               "",
-		ClientID:                "",
-		AvailablePairs:          "BTC-USDT,BCH-USDT",
-		EnabledPairs:            "BTC-USDT",
-		BaseCurrencies:          "USD",
-		AssetTypes:              "SPOT",
-		SupportsAutoPairUpdates: false,
+		Name:    "Huobi",
+		Enabled: true,
+		Verbose: true,
+		Features: &config.FeaturesConfig{
+			Supports: config.FeaturesSupportedConfig{
+				AutoPairUpdates: false,
+				Websocket:       false,
+			},
+			Enabled: config.FeaturesEnabledConfig{
+				AutoPairUpdates: false,
+				Websocket:       false,
+			},
+		},
+		API: config.APIConfig{
+			AuthenticatedSupport: false,
+		},
+		HTTPTimeout:    15000000000,
+		AvailablePairs: "BTC-USDT,BCH-USDT",
+		EnabledPairs:   "BTC-USDT",
+		BaseCurrencies: "USD",
+		AssetTypes:     "SPOT",
 		ConfigCurrencyPairFormat: &config.CurrencyPairFormatConfig{
 			Uppercase: true,
 			Delimiter: "-",
@@ -68,9 +73,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - Huobi Setup() init error")
 	}
 
-	hConfig.AuthenticatedAPISupport = true
-	hConfig.APIKey = apiKey
-	hConfig.APISecret = apiSecret
+	hConfig.API.AuthenticatedSupport = true
+	hConfig.API.Credentials.Key = apiKey
+	hConfig.API.Credentials.Secret = apiSecret
 
 	h.Setup(hConfig)
 }
@@ -166,7 +171,7 @@ func TestGetTimestamp(t *testing.T) {
 func TestGetAccounts(t *testing.T) {
 	t.Parallel()
 
-	if h.APIKey == "" || h.APISecret == "" || h.APIAuthPEMKey == "" {
+	if h.API.Credentials.Key == "" || h.API.Credentials.Secret == "" || h.API.Credentials.PEMKey == "" {
 		t.Skip()
 	}
 
@@ -179,7 +184,7 @@ func TestGetAccounts(t *testing.T) {
 func TestGetAccountBalance(t *testing.T) {
 	t.Parallel()
 
-	if h.APIKey == "" || h.APISecret == "" || h.APIAuthPEMKey == "" {
+	if h.API.Credentials.Key == "" || h.API.Credentials.Secret == "" || h.API.Credentials.PEMKey == "" {
 		t.Skip()
 	}
 
@@ -198,7 +203,7 @@ func TestGetAccountBalance(t *testing.T) {
 func TestSpotNewOrder(t *testing.T) {
 	t.Parallel()
 
-	if h.APIKey == "" || h.APISecret == "" || h.APIAuthPEMKey == "" {
+	if h.API.Credentials.Key == "" || h.API.Credentials.Secret == "" || h.API.Credentials.PEMKey == "" {
 		t.Skip()
 	}
 
@@ -237,7 +242,7 @@ func TestGetOrder(t *testing.T) {
 func TestGetMarginLoanOrders(t *testing.T) {
 	t.Parallel()
 
-	if h.APIKey == "" || h.APISecret == "" || h.APIAuthPEMKey == "" {
+	if h.API.Credentials.Key == "" || h.API.Credentials.Secret == "" || h.API.Credentials.PEMKey == "" {
 		t.Skip()
 	}
 
@@ -250,7 +255,7 @@ func TestGetMarginLoanOrders(t *testing.T) {
 func TestGetMarginAccountBalance(t *testing.T) {
 	t.Parallel()
 
-	if h.APIKey == "" || h.APISecret == "" || h.APIAuthPEMKey == "" {
+	if h.API.Credentials.Key == "" || h.API.Credentials.Secret == "" || h.API.Credentials.PEMKey == "" {
 		t.Skip()
 	}
 
@@ -272,7 +277,7 @@ func TestCancelWithdraw(t *testing.T) {
 func TestPEMLoadAndSign(t *testing.T) {
 	t.Parallel()
 
-	pemKey := strings.NewReader(h.APIAuthPEMKey)
+	pemKey := strings.NewReader(h.API.Credentials.PEMKey)
 	pemBytes, err := ioutil.ReadAll(pemKey)
 	if err != nil {
 		t.Fatalf("Test Failed. TestPEMLoadAndSign Unable to ioutil.ReadAll PEM key: %s", err)
@@ -402,13 +407,13 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	h.SetDefaults()
 	TestSetup(t)
-	h.Verbose = true
 
-	if h.APIKey == "" || h.APISecret == "" ||
-		h.APIKey == "Key" || h.APISecret == "Secret" ||
+	if h.API.Credentials.Key == "" || h.API.Credentials.Secret == "" ||
+		h.API.Credentials.Key == "Key" || h.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", h.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", h.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "",
 		FirstCurrency:  symbol.BTC,

@@ -32,10 +32,10 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - kraken Setup() init error", err)
 	}
 
-	krakenConfig.AuthenticatedAPISupport = true
-	krakenConfig.APIKey = apiKey
-	krakenConfig.APISecret = apiSecret
-	krakenConfig.ClientID = clientID
+	krakenConfig.API.AuthenticatedSupport = true
+	krakenConfig.API.Credentials.Key = apiKey
+	krakenConfig.API.Credentials.Secret = apiSecret
+	krakenConfig.API.Credentials.ClientID = clientID
 
 	k.Setup(krakenConfig)
 }
@@ -336,18 +336,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	k.SetDefaults()
 	TestSetup(t)
-	k.Verbose = true
 
-	if k.APIKey == "" || k.APISecret == "" ||
-		k.APIKey == "Key" || k.APISecret == "Secret" ||
+	if k.API.Credentials.Key == "" || k.API.Credentials.Secret == "" ||
+		k.API.Credentials.Key == "Key" || k.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", k.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", k.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "",
 		FirstCurrency:  symbol.XBT,
 		SecondCurrency: symbol.CAD,
 	}
+
 	response, err := k.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 10, "hi")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

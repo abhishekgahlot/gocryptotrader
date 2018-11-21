@@ -92,7 +92,7 @@ func GetAllActiveOrderbooks() []EnabledExchangeOrderbooks {
 			var individualExchange EnabledExchangeOrderbooks
 			exchangeName := individualBot.GetName()
 			individualExchange.ExchangeName = exchangeName
-			currencies := individualBot.GetEnabledCurrencies()
+			currencies := individualBot.GetEnabledPairs()
 			assetTypes, err := exchange.GetExchangeAssetTypes(exchangeName)
 			if err != nil {
 				log.Printf("failed to get %s exchange asset types. Error: %s",
@@ -183,7 +183,7 @@ func GetAllActiveTickers() []EnabledExchangeCurrencies {
 			var individualExchange EnabledExchangeCurrencies
 			exchangeName := individualBot.GetName()
 			individualExchange.ExchangeName = exchangeName
-			currencies := individualBot.GetEnabledCurrencies()
+			currencies := individualBot.GetEnabledPairs()
 			for _, x := range currencies {
 				currency := x
 				assetTypes, err := exchange.GetExchangeAssetTypes(exchangeName)
@@ -238,7 +238,9 @@ func GetAllEnabledExchangeAccountInfo() AllEnabledExchangeAccounts {
 	for _, individualBot := range Bot.Exchanges {
 		if individualBot != nil && individualBot.IsEnabled() {
 			if !individualBot.GetAuthenticatedAPISupport() {
-				log.Printf("GetAllEnabledExchangeAccountInfo: Skippping %s due to disabled authenticated API support.", individualBot.GetName())
+				if Bot.Settings.Verbose {
+					log.Printf("GetAllEnabledExchangeAccountInfo: Skippping %s due to disabled authenticated API support.", individualBot.GetName())
+				}
 				continue
 			}
 			individualExchange, err := individualBot.GetAccountInfo()

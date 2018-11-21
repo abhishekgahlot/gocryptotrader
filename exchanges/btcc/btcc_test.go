@@ -2,7 +2,6 @@ package btcc
 
 import (
 	"testing"
-	"time"
 
 	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/symbol"
@@ -30,10 +29,10 @@ func TestSetup(t *testing.T) {
 	}
 	b.Setup(bConfig)
 
-	if !b.IsEnabled() || b.AuthenticatedAPISupport ||
-		b.RESTPollingDelay != time.Duration(10) || b.Verbose ||
+	if !b.IsEnabled() || b.API.AuthenticatedSupport ||
 		b.Websocket.IsEnabled() || len(b.BaseCurrencies) < 1 ||
-		len(b.AvailablePairs) < 1 || len(b.EnabledPairs) < 1 {
+		len(b.AvailablePairs) < 1 || len(b.EnabledPairs) < 1 ||
+		b.Verbose {
 		t.Error("Test Failed - BTCC Setup values not set correctly")
 	}
 }

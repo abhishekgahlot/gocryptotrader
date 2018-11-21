@@ -74,7 +74,7 @@ func (o *OKCoin) WsConnect() error {
 	go o.WsReadData()
 	go o.WsHandleData()
 
-	for _, p := range o.GetEnabledCurrencies() {
+	for _, p := range o.GetEnabledPairs() {
 		fPair := exchange.FormatExchangeCurrency(o.GetName(), p)
 
 		o.AddChannel(fmt.Sprintf(wsSubDepthFull, fPair.String(), "20"))

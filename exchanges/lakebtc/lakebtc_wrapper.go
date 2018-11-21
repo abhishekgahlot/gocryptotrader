@@ -5,13 +5,54 @@ import (
 	"log"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	"github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
+
+// SetDefaults sets LakeBTC defaults
+func (l *LakeBTC) SetDefaults() {
+	l.Name = "LakeBTC"
+	l.Enabled = true
+	l.Verbose = true
+	l.APIWithdrawPermissions = exchange.AutoWithdrawCrypto | exchange.WithdrawFiatViaWebsiteOnly
+	l.RequestCurrencyPairFormat.Uppercase = true
+	l.ConfigCurrencyPairFormat.Uppercase = true
+	l.AssetTypes = []string{ticker.Spot}
+	l.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: true,
+			REST:               true,
+			Websocket:          false,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	l.Requester = request.New(l.Name,
+		request.NewRateLimit(time.Second, lakeBTCAuthRate),
+		request.NewRateLimit(time.Second, lakeBTCUnauth),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	l.API.Endpoints.URLDefault = lakeBTCAPIURL
+	l.API.Endpoints.URL = l.API.Endpoints.URLDefault
+}
+
+// Setup sets exchange configuration profile
+func (l *LakeBTC) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		l.SetEnabled(false)
+		return nil
+	}
+
+	return l.SetupDefaults(exch)
+}
 
 // Start starts the LakeBTC go routine
 func (l *LakeBTC) Start(wg *sync.WaitGroup) {
@@ -25,19 +66,43 @@ func (l *LakeBTC) Start(wg *sync.WaitGroup) {
 // Run implements the LakeBTC wrapper
 func (l *LakeBTC) Run() {
 	if l.Verbose {
-		log.Printf("%s polling delay: %ds.\n", l.GetName(), l.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", l.GetName(), len(l.EnabledPairs), l.EnabledPairs)
 	}
 
-	exchangeProducts, err := l.GetTradablePairs()
-	if err != nil {
-		log.Printf("%s Failed to get available products.\n", l.GetName())
-	} else {
-		err = l.UpdateCurrencies(exchangeProducts, false, false)
-		if err != nil {
-			log.Printf("%s Failed to update available currencies.\n", l.GetName())
-		}
+	if !l.GetEnabledFeatures().AutoPairUpdates {
+		return
 	}
+
+	err := l.UpdateTradablePairs(false)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", l.Name, err)
+	}
+}
+
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (l *LakeBTC) FetchTradablePairs() ([]string, error) {
+	result, err := l.GetTicker()
+	if err != nil {
+		return nil, err
+	}
+
+	var currencies []string
+	for x := range result {
+		currencies = append(currencies, common.StringToUpper(x))
+	}
+
+	return currencies, nil
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (l *LakeBTC) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := l.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return l.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
@@ -47,7 +112,7 @@ func (l *LakeBTC) UpdateTicker(p pair.CurrencyPair, assetType string) (ticker.Pr
 		return ticker.Price{}, err
 	}
 
-	for _, x := range l.GetEnabledCurrencies() {
+	for _, x := range l.GetEnabledPairs() {
 		currency := exchange.FormatExchangeCurrency(l.Name, x).String()
 		var tickerPrice ticker.Price
 		tickerPrice.Pair = x

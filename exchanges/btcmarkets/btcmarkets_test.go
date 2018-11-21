@@ -32,9 +32,9 @@ func TestSetup(t *testing.T) {
 	}
 
 	if apiKey != "" && apiSecret != "" {
-		bConfig.APIKey = apiKey
-		bConfig.APISecret = apiSecret
-		bConfig.AuthenticatedAPISupport = true
+		bConfig.API.Credentials.Key = apiKey
+		bConfig.API.Credentials.Secret = apiSecret
+		bConfig.API.AuthenticatedSupport = true
 	}
 
 	b.Setup(bConfig)
@@ -308,16 +308,18 @@ func TestSubmitOrder(t *testing.T) {
 	b.SetDefaults()
 	TestSetup(t)
 
-	if b.APIKey == "" || b.APISecret == "" ||
-		b.APIKey == "Key" || b.APISecret == "Secret" ||
+	if b.API.Credentials.Key == "" || b.API.Credentials.Secret == "" ||
+		b.API.Credentials.Key == "Key" || b.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
 		t.Skip()
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "-",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.LTC,
 	}
+
 	response, err := b.SubmitOrder(p, exchange.Buy, exchange.Limit, 1, 1, "clientId")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

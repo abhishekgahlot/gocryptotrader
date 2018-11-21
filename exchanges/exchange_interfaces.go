@@ -12,7 +12,7 @@ import (
 // IBotExchange enforces standard functions for all exchanges supported in
 // GoCryptoTrader
 type IBotExchange interface {
-	Setup(exch config.ExchangeConfig)
+	Setup(exch config.ExchangeConfig) error
 	Start(wg *sync.WaitGroup)
 	SetDefaults()
 	GetName() string
@@ -22,13 +22,15 @@ type IBotExchange interface {
 	UpdateTicker(currency pair.CurrencyPair, assetType string) (ticker.Price, error)
 	FetchOrderbook(currency pair.CurrencyPair, assetType string) (orderbook.Base, error)
 	UpdateOrderbook(currency pair.CurrencyPair, assetType string) (orderbook.Base, error)
-	GetEnabledCurrencies() []pair.CurrencyPair
-	GetAvailableCurrencies() []pair.CurrencyPair
+	FetchTradablePairs() ([]string, error)
+	UpdateTradablePairs(forceUpdate bool) error
+	GetEnabledPairs() []pair.CurrencyPair
+	GetAvailablePairs() []pair.CurrencyPair
 	GetAccountInfo() (AccountInfo, error)
 	GetAuthenticatedAPISupport() bool
-	SetCurrencies(pairs []pair.CurrencyPair, enabledPairs bool) error
+	SetPairs(pairs []pair.CurrencyPair, enabledPairs bool) error
 	GetAssetTypes() []string
-	GetExchangeHistory(pair.CurrencyPair, string) ([]TradeHistory, error)
+	GetExchangeHistory(currencyPair pair.CurrencyPair, assetType string) ([]TradeHistory, error)
 	SupportsAutoPairUpdates() bool
 	SupportsRESTTickerBatchUpdates() bool
 	GetLastPairsUpdateTime() int64

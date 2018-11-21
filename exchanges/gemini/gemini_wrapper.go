@@ -5,13 +5,63 @@ import (
 	"log"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	"github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
+
+// SetDefaults sets package defaults for gemini exchange
+func (g *Gemini) SetDefaults() {
+	g.Name = "Gemini"
+	g.Enabled = true
+	g.Verbose = true
+	g.APIWithdrawPermissions = exchange.AutoWithdrawCryptoWithAPIPermission | exchange.AutoWithdrawCryptoWithSetup | exchange.WithdrawFiatViaWebsiteOnly
+	g.RequestCurrencyPairFormat.Uppercase = true
+	g.ConfigCurrencyPairFormat.Uppercase = true
+	g.AssetTypes = []string{ticker.Spot}
+	g.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: false,
+			REST:               true,
+			Websocket:          false,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	g.Requester = request.New(g.Name,
+		request.NewRateLimit(time.Minute, geminiAuthRate),
+		request.NewRateLimit(time.Minute, geminiUnauthRate),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	g.API.Endpoints.URLDefault = geminiAPIURL
+	g.API.Endpoints.URL = g.API.Endpoints.URLDefault
+}
+
+// Setup sets exchange configuration parameters
+func (g *Gemini) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		g.SetEnabled(false)
+		return nil
+	}
+
+	err := g.SetupDefaults(exch)
+	if err != nil {
+		return err
+	}
+
+	if exch.UseSandbox {
+		g.API.Endpoints.URL = geminiSandboxAPIURL
+	}
+
+	return nil
+}
 
 // Start starts the Gemini go routine
 func (g *Gemini) Start(wg *sync.WaitGroup) {
@@ -25,19 +75,33 @@ func (g *Gemini) Start(wg *sync.WaitGroup) {
 // Run implements the Gemini wrapper
 func (g *Gemini) Run() {
 	if g.Verbose {
-		log.Printf("%s polling delay: %ds.\n", g.GetName(), g.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", g.GetName(), len(g.EnabledPairs), g.EnabledPairs)
 	}
 
-	exchangeProducts, err := g.GetSymbols()
-	if err != nil {
-		log.Printf("%s Failed to get available symbols.\n", g.GetName())
-	} else {
-		err = g.UpdateCurrencies(exchangeProducts, false, false)
-		if err != nil {
-			log.Printf("%s Failed to update available currencies.\n", g.GetName())
-		}
+	if !g.GetEnabledFeatures().AutoPairUpdates {
+		return
 	}
+
+	err := g.UpdateTradablePairs(false)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", g.Name, err)
+	}
+}
+
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (g *Gemini) FetchTradablePairs() ([]string, error) {
+	return g.GetSymbols()
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (g *Gemini) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := g.GetSymbols()
+	if err != nil {
+		return err
+	}
+
+	return g.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // GetAccountInfo Retrieves balances for all enabled currencies for the

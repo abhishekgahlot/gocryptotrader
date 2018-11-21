@@ -3,7 +3,6 @@ package coinut
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
@@ -31,13 +30,14 @@ func TestSetup(t *testing.T) {
 	if err != nil {
 		t.Error("Test Failed - Coinut Setup() init error")
 	}
-	bConfig.AuthenticatedAPISupport = true
-	bConfig.APISecret = apiSecret
+	bConfig.API.AuthenticatedSupport = true
+	bConfig.API.Credentials.Key = apiKey
+	bConfig.API.Credentials.Secret = apiSecret
 	bConfig.Verbose = true
 	c.Setup(bConfig)
 
-	if !c.IsEnabled() ||
-		c.RESTPollingDelay != time.Duration(10) ||
+	if !c.IsEnabled() || !c.API.AuthenticatedSupport ||
+		!c.Verbose ||
 		c.Websocket.IsEnabled() || len(c.BaseCurrencies) < 1 ||
 		len(c.AvailablePairs) < 1 || len(c.EnabledPairs) < 1 {
 		t.Error("Test Failed - Coinut Setup values not set correctly")
@@ -200,10 +200,10 @@ func TestSubmitOrder(t *testing.T) {
 	TestSetup(t)
 	c.Verbose = true
 
-	if c.APISecret == "" ||
-		c.APISecret == "Secret" ||
+	if c.API.Credentials.Secret == "" ||
+		c.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", c.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", c.API.Credentials.Key, canPlaceOrders))
 	}
 	var p = pair.CurrencyPair{
 		Delimiter:      "",

@@ -34,9 +34,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - Okex Setup() init error")
 	}
 
-	okexConfig.AuthenticatedAPISupport = true
-	okexConfig.APIKey = apiKey
-	okexConfig.APISecret = apiSecret
+	okexConfig.API.AuthenticatedSupport = true
+	okexConfig.API.Credentials.Key = apiKey
+	okexConfig.API.Credentials.Secret = apiSecret
 
 	o.Setup(okexConfig)
 }
@@ -255,7 +255,7 @@ func TestGetSpotKline(t *testing.T) {
 func TestSpotNewOrder(t *testing.T) {
 	t.Parallel()
 
-	if o.APIKey == "" || o.APISecret == "" {
+	if o.API.Credentials.Key == "" || o.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 
@@ -273,7 +273,7 @@ func TestSpotNewOrder(t *testing.T) {
 func TestSpotCancelOrder(t *testing.T) {
 	t.Parallel()
 
-	if o.APIKey == "" || o.APISecret == "" {
+	if o.API.Credentials.Key == "" || o.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 
@@ -286,7 +286,7 @@ func TestSpotCancelOrder(t *testing.T) {
 func TestGetUserInfo(t *testing.T) {
 	t.Parallel()
 
-	if o.APIKey == "" || o.APISecret == "" {
+	if o.API.Credentials.Key == "" || o.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 
@@ -403,18 +403,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	o.SetDefaults()
 	TestSetup(t)
-	o.Verbose = true
 
-	if o.APIKey == "" || o.APISecret == "" ||
-		o.APIKey == "Key" || o.APISecret == "Secret" ||
+	if o.API.Credentials.Key == "" || o.API.Credentials.Secret == "" ||
+		o.API.Credentials.Key == "Key" || o.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", o.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", o.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.EUR,
 	}
+
 	response, err := o.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 10, "hi")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

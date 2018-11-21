@@ -101,7 +101,7 @@ func (b *Bitstamp) WsConnect() error {
 
 	go b.WsReadData()
 
-	for _, p := range b.GetEnabledCurrencies() {
+	for _, p := range b.GetEnabledPairs() {
 		orderbookSeed, err := b.GetOrderbook(p.Pair().String())
 		if err != nil {
 			return err

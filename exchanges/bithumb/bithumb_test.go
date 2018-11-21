@@ -30,9 +30,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - Bithumb Setup() init error")
 	}
 
-	bitConfig.AuthenticatedAPISupport = true
-	bitConfig.APIKey = testAPIKey
-	bitConfig.APISecret = testAPISecret
+	bitConfig.API.AuthenticatedSupport = true
+	bitConfig.API.Credentials.Key = testAPIKey
+	bitConfig.API.Credentials.Secret = testAPISecret
 
 	b.Setup(bitConfig)
 }
@@ -290,8 +290,8 @@ func TestSubmitOrder(t *testing.T) {
 	b.SetDefaults()
 	TestSetup(t)
 
-	if b.APIKey == "" || b.APISecret == "" ||
-		b.APIKey == "Key" || b.APISecret == "Secret" ||
+	if b.API.Credentials.Key == "" || b.API.Credentials.Secret == "" ||
+		b.API.Credentials.Key == "Key" || b.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
 		t.Skip()
 	}

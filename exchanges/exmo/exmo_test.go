@@ -24,9 +24,9 @@ func TestDefault(t *testing.T) {
 }
 
 func TestSetup(t *testing.T) {
-	e.AuthenticatedAPISupport = true
-	e.APIKey = APIKey
-	e.APISecret = APISecret
+	e.API.AuthenticatedSupport = true
+	e.API.Credentials.Key = APIKey
+	e.API.Credentials.Secret = APISecret
 }
 
 func TestGetTrades(t *testing.T) {
@@ -254,18 +254,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	e.SetDefaults()
 	TestSetup(t)
-	e.Verbose = true
 
-	if e.APISecret == "" ||
-		e.APISecret == "Secret" ||
+	if e.API.Credentials.Secret == "" ||
+		e.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", e.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", e.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var p = pair.CurrencyPair{
 		Delimiter:      "_",
 		FirstCurrency:  symbol.BTC,
 		SecondCurrency: symbol.USD,
 	}
+
 	response, err := e.SubmitOrder(p, exchange.Buy, exchange.Market, 1, 10, "1234234")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

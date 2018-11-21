@@ -31,9 +31,9 @@ func TestSetup(t *testing.T) {
 		t.Error("Test Failed - ZB Setup() init error")
 	}
 
-	zbConfig.AuthenticatedAPISupport = true
-	zbConfig.APIKey = apiKey
-	zbConfig.APISecret = apiSecret
+	zbConfig.API.AuthenticatedSupport = true
+	zbConfig.API.Credentials.Key = apiKey
+	zbConfig.API.Credentials.Secret = apiSecret
 
 	z.Setup(zbConfig)
 }
@@ -41,7 +41,7 @@ func TestSetup(t *testing.T) {
 func TestSpotNewOrder(t *testing.T) {
 	t.Parallel()
 
-	if z.APIKey == "" || z.APISecret == "" {
+	if z.API.Credentials.Key == "" || z.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 
@@ -62,7 +62,7 @@ func TestSpotNewOrder(t *testing.T) {
 func TestCancelExistingOrder(t *testing.T) {
 	t.Parallel()
 
-	if z.APIKey == "" || z.APISecret == "" {
+	if z.API.Credentials.Key == "" || z.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 
@@ -115,7 +115,7 @@ func TestGetMarkets(t *testing.T) {
 func TestGetAccountInfo(t *testing.T) {
 	t.Parallel()
 
-	if z.APIKey == "" || z.APISecret == "" {
+	if z.API.Credentials.Key == "" || z.API.Credentials.Secret == "" {
 		t.Skip()
 	}
 
@@ -248,18 +248,19 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestSubmitOrder(t *testing.T) {
 	z.SetDefaults()
 	TestSetup(t)
-	z.Verbose = true
 
-	if z.APIKey == "" || z.APISecret == "" ||
-		z.APIKey == "Key" || z.APISecret == "Secret" ||
+	if z.API.Credentials.Key == "" || z.API.Credentials.Secret == "" ||
+		z.API.Credentials.Key == "Key" || z.API.Credentials.Secret == "Secret" ||
 		!canPlaceOrders {
-		t.Skip(fmt.Sprintf("ApiKey: %s. Can place orders: %v", z.APIKey, canPlaceOrders))
+		t.Skip(fmt.Sprintf("API.Credentials.Key: %s. Can place orders: %v", z.API.Credentials.Key, canPlaceOrders))
 	}
+
 	var pair = pair.CurrencyPair{
 		Delimiter:      "_",
 		FirstCurrency:  symbol.QTUM,
 		SecondCurrency: symbol.USDT,
 	}
+
 	response, err := z.SubmitOrder(pair, exchange.Buy, exchange.Market, 1, 10, "hi")
 	if err != nil || !response.IsOrderPlaced {
 		t.Errorf("Order failed to be placed: %v", err)

@@ -5,14 +5,56 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/thrasher-/gocryptotrader/common"
-
+	"github.com/thrasher-/gocryptotrader/config"
 	"github.com/thrasher-/gocryptotrader/currency/pair"
 	"github.com/thrasher-/gocryptotrader/exchanges"
 	"github.com/thrasher-/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-/gocryptotrader/exchanges/request"
 	"github.com/thrasher-/gocryptotrader/exchanges/ticker"
 )
+
+// SetDefaults sets basic defaults
+func (b *BTCMarkets) SetDefaults() {
+	b.Name = "BTC Markets"
+	b.Enabled = true
+	b.Verbose = true
+	b.APIWithdrawPermissions = exchange.AutoWithdrawCrypto | exchange.AutoWithdrawFiat
+	b.RequestCurrencyPairFormat.Uppercase = true
+	b.ConfigCurrencyPairFormat.Delimiter = "-"
+	b.ConfigCurrencyPairFormat.Uppercase = true
+	b.AssetTypes = []string{ticker.Spot}
+	b.Features = exchange.Features{
+		Supports: exchange.FeaturesSupported{
+			AutoPairUpdates:    true,
+			RESTTickerBatching: false,
+			REST:               true,
+			Websocket:          false,
+		},
+		Enabled: exchange.FeaturesEnabled{
+			AutoPairUpdates: true,
+		},
+	}
+	b.Requester = request.New(b.Name,
+		request.NewRateLimit(time.Second*10, btcmarketsAuthLimit),
+		request.NewRateLimit(time.Second*10, btcmarketsUnauthLimit),
+		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout))
+	b.API.Endpoints.URLDefault = btcMarketsAPIURL
+	b.API.Endpoints.URL = b.API.Endpoints.URLDefault
+	b.API.CredentialsValidator.RequiresBase64DecodeSecret = true
+}
+
+// Setup takes in an exchange configuration and sets all parameters
+func (b *BTCMarkets) Setup(exch config.ExchangeConfig) error {
+	if !exch.Enabled {
+		b.SetEnabled(false)
+		return nil
+	}
+
+	return b.SetupDefaults(exch)
+}
 
 // Start starts the BTC Markets go routine
 func (b *BTCMarkets) Start(wg *sync.WaitGroup) {
@@ -26,38 +68,55 @@ func (b *BTCMarkets) Start(wg *sync.WaitGroup) {
 // Run implements the BTC Markets wrapper
 func (b *BTCMarkets) Run() {
 	if b.Verbose {
-		log.Printf("%s polling delay: %ds.\n", b.GetName(), b.RESTPollingDelay)
 		log.Printf("%s %d currencies enabled: %s.\n", b.GetName(), len(b.EnabledPairs), b.EnabledPairs)
 	}
 
-	markets, err := b.GetMarkets()
-	if err != nil {
-		log.Printf("%s failed to get active market. Err: %s", b.Name, err)
-	} else {
-		forceUpgrade := false
-		if !common.StringDataContains(b.EnabledPairs, "-") || !common.StringDataContains(b.AvailablePairs, "-") {
-			forceUpgrade = true
-		}
+	forceUpdate := false
+	if !common.StringDataContains(b.EnabledPairs, "-") || !common.StringDataContains(b.AvailablePairs, "-") {
+		enabledPairs := []string{"BTC-AUD"}
+		log.Println("WARNING: Available pairs for BTC Makrets reset due to config upgrade, please enable the pairs you would like again.")
+		forceUpdate = true
 
-		var currencies []string
-		for x := range markets {
-			currencies = append(currencies, markets[x].Instrument+"-"+markets[x].Currency)
-		}
-
-		if forceUpgrade {
-			enabledPairs := []string{"BTC-AUD"}
-			log.Println("WARNING: Available pairs for BTC Makrets reset due to config upgrade, please enable the pairs you would like again.")
-
-			err = b.UpdateCurrencies(enabledPairs, true, true)
-			if err != nil {
-				log.Printf("%s failed to update currencies. Err: %s", b.Name, err)
-			}
-		}
-		err = b.UpdateCurrencies(currencies, false, forceUpgrade)
+		err := b.UpdatePairs(enabledPairs, true, true)
 		if err != nil {
 			log.Printf("%s failed to update currencies. Err: %s", b.Name, err)
 		}
 	}
+
+	if !b.GetEnabledFeatures().AutoPairUpdates && !forceUpdate {
+		return
+	}
+
+	err := b.UpdateTradablePairs(forceUpdate)
+	if err != nil {
+		log.Printf("%s failed to update tradable pairs. Err: %s", b.Name, err)
+	}
+}
+
+// FetchTradablePairs returns a list of the exchanges tradable pairs
+func (b *BTCMarkets) FetchTradablePairs() ([]string, error) {
+	markets, err := b.GetMarkets()
+	if err != nil {
+		return nil, err
+	}
+
+	var pairs []string
+	for x := range markets {
+		pairs = append(pairs, markets[x].Instrument+"-"+markets[x].Currency)
+	}
+
+	return pairs, nil
+}
+
+// UpdateTradablePairs updates the exchanges available pairs and stores
+// them in the exchanges config
+func (b *BTCMarkets) UpdateTradablePairs(forceUpdate bool) error {
+	pairs, err := b.FetchTradablePairs()
+	if err != nil {
+		return err
+	}
+
+	return b.UpdatePairs(pairs, false, forceUpdate)
 }
 
 // UpdateTicker updates and returns the ticker for a currency pair
